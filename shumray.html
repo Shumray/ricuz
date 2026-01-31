@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>מערכת תקציב - HTML</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1 class="title">🎯 מערכת תקציב</h1>
+                <p class="subtitle">מערכת ניהול תקציב חכמה ופשוטה</p>
+                <div class="year-selector-header">
+                    <label for="yearSelect">שנה נבחרת:</label>
+                    <select id="yearSelect" class="year-select">
+                        <!-- Years will be populated dynamically -->
+                    </select>
+                </div>
+            </div>
+            <div class="header-actions">
+                <button id="exportMappingsBtn" class="btn btn-secondary">📋 ייצוא מיפויים</button>
+                <button id="exportBtn" class="btn btn-secondary">📥 ייצוא נתונים</button>
+                <button id="importBtn" class="btn btn-secondary">📤 ייבוא נתונים</button>
+                <input type="file" id="importFile" accept=".json" style="display: none;">
+            </div>
+        </header>
+
+        <!-- Navigation Tabs -->
+        <nav class="nav-tabs">
+            <button class="tab-btn active" data-tab="data-entry">📊 הזנת נתונים</button>
+            <button class="tab-btn" data-tab="mapping">🗺️ מיפוי קטגוריות</button>
+            <button class="tab-btn" data-tab="monthly">📅 תצוגה חודשית</button>
+            <button class="tab-btn" data-tab="dashboard">📈 דשבורד</button>
+        </nav>
+
+        <!-- Tab Content -->
+        <main class="tab-content">
+            <!-- Data Entry Tab -->
+            <div id="data-entry" class="tab-panel active">
+                <div class="panel-header">
+                    <h2>📊 הזנת עסקאות</h2>
+                    <button id="addTransactionBtn" class="btn btn-primary">+ הוסף עסקה</button>
+                </div>
+
+                <!-- Add Transaction Form -->
+                <div id="transactionForm" class="form-card">
+                    <h3>עסקה חדשה</h3>
+                    <form id="newTransactionForm">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="month">חודש</label>
+                                <select id="month" required>
+                                    <option value="">בחר חודש</option>
+                                    <option value="01">ינואר</option>
+                                    <option value="02">פברואר</option>
+                                    <option value="03">מרץ</option>
+                                    <option value="04">אפריל</option>
+                                    <option value="05">מאי</option>
+                                    <option value="06">יוני</option>
+                                    <option value="07">יולי</option>
+                                    <option value="08">אוגוסט</option>
+                                    <option value="09">ספטמבר</option>
+                                    <option value="10">אוקטובר</option>
+                                    <option value="11">נובמבר</option>
+                                    <option value="12">דצמבר</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="item">פריט</label>
+                                <input type="text" id="item" placeholder="התחל לכתוב ..." required autocomplete="off">
+                                <small style="color: #666; margin-top: 5px;">
+                                    התחל להקליד - יופיעו הצעות מהמיפויים הקיימים. פריטים חדשים ידרשו אישור.
+                                </small>
+                            </div>
+                            <div class="form-group">
+                                <label for="amount">סכום</label>
+                                <input type="number" id="amount" step="0.01" placeholder="סכום בשקלים" required>
+                                <small style="color: #666; margin-top: 5px;">
+                                    הסוג יקבע אוטומטית - הכנסות: משכורת, ביטוח לאומי, מענק עבודה
+                                </small>
+                            </div>
+                            <div class="form-group">
+                                <label for="note">הערה</label>
+                                <input type="text" id="note" placeholder="הערה (אופציונלי)">
+                            </div>
+                            <div class="form-group">
+                                <div class="payment-method-section">
+                                    <label class="checkbox-container">
+                                        <input type="checkbox" id="isCheck" class="payment-check">
+                                        <span class="checkmark"></span>
+                                        <span class="checkbox-label">תשלום בצ'יק</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">💾 שמור</button>
+                            <button type="button" id="cancelForm" class="btn btn-secondary">❌ בטל</button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Transactions Table -->
+                <div class="table-container">
+                    <table id="transactionsTable" class="data-table">
+                        <thead>
+                            <tr>
+                                <th>חודש</th>
+                                <th>פריט</th>
+                                <th>סכום</th>
+                                <th>סוג</th>
+                                <th>קטגוריה</th>
+                                <th>הערה</th>
+                                <th>צ'יק</th>
+                                <th>פעולות</th>
+                            </tr>
+                        </thead>
+                        <tbody id="transactionsBody">
+                            <!-- Transactions will be populated here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Mapping Tab -->
+            <div id="mapping" class="tab-panel">
+                <div class="panel-header">
+                    <h2>🗺️ מיפוי קטגוריות</h2>
+                    <button id="addMappingBtn" class="btn btn-primary">+ הוסף מיפוי</button>
+                </div>
+
+                <!-- Add Mapping Form -->
+                <div id="mappingForm" class="form-card" style="display: none;">
+                    <h3>מיפוי חדש</h3>
+                    <form id="newMappingForm">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="mappingItem">פריט</label>
+                                <input type="text" id="mappingItem" placeholder="למשל: סופרסל" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="mappingCategory">קטגוריה</label>
+                                <select id="mappingCategory" required>
+                                    <option value="">בחר קטגוריה</option>
+                                    <option value="חינוך ותרבות">חינוך ותרבות</option>
+                                    <option value="טיפול רפואי">טיפול רפואי</option>
+                                    <option value="כלכלה">כלכלה</option>
+                                    <option value="מיסים">מיסים</option>
+                                    <option value="נסיעות">נסיעות</option>
+                                    <option value="ביגוד">ביגוד</option>
+                                    <option value="משכורת">משכורת</option>
+                                    <option value="עמלת בנק">עמלת בנק</option>
+                                    <option value="שונות">שונות</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">💾 שמור</button>
+                            <button type="button" id="cancelMapping" class="btn btn-secondary">❌ בטל</button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Mapping Table -->
+                <div class="table-container">
+                    <table id="mappingTable" class="data-table">
+                        <thead>
+                            <tr>
+                                <th>פריט</th>
+                                <th>קטגוריה</th>
+                                <th>פעולות</th>
+                            </tr>
+                        </thead>
+                        <tbody id="mappingBody">
+                            <!-- Mappings will be populated here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Monthly Tab -->
+            <div id="monthly" class="tab-panel">
+                <div class="panel-header">
+                    <h2>📅 תצוגה חודשית</h2>
+                    <div class="monthly-controls">
+                        <div class="month-selector">
+                            <label for="monthSelect">חודש:</label>
+                            <select id="monthSelect">
+                                <option value="01">ינואר</option>
+                                <option value="02">פברואר</option>
+                                <option value="03">מרץ</option>
+                                <option value="04">אפריל</option>
+                                <option value="05">מאי</option>
+                                <option value="06">יוני</option>
+                                <option value="07">יולי</option>
+                                <option value="08">אוגוסט</option>
+                                <option value="09">ספטמבר</option>
+                                <option value="10">אוקטובר</option>
+                                <option value="11">נובמבר</option>
+                                <option value="12">דצמבר</option>
+                            </select>
+                        </div>
+                        <button id="exportMonthlyReportBtn" class="btn btn-primary" title="פתח דוח חודשי מפורט בחלון חדש להדפסה (Ctrl+P להדפסה, Esc לסגירה)">📄 הצג דוח להדפסה</button>
+                    </div>
+                </div>
+
+                <div class="monthly-content">
+                    <!-- Monthly Balance Summary -->
+                    <div class="summary-card balance-summary">
+                        <h3>💳 סיכום יתרות ותזרים חודשי</h3>
+                        <div id="balanceSummary" class="balance-table">
+                            <!-- Balance summary will be populated here -->
+                        </div>
+                    </div>
+
+                    <!-- Category Summary -->
+                    <div class="summary-card">
+                        <h3>📊 סיכום לפי קטגוריות</h3>
+                        <div id="categorySummary" class="category-summary">
+                            <!-- Category summary will be populated here -->
+                        </div>
+                    </div>
+
+                    <!-- Monthly Transactions -->
+                    <div class="summary-card">
+                        <h3>📝 תנועות החודש</h3>
+                        <div id="monthlyTransactions" class="monthly-transactions">
+                            <!-- Monthly transactions will be populated here -->
+                        </div>
+                    </div>
+
+                    <!-- Check Payments Summary -->
+                    <div id="checkPaymentsSummary" class="summary-card" style="display: none;">
+                        <h3>🏦 תשלומי צ'יקים בחודש</h3>
+                        <div id="checkPaymentsList" class="check-payments-list">
+                            <!-- Check payments will be populated here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dashboard Tab -->
+            <div id="dashboard" class="tab-panel">
+                <div class="panel-header">
+                    <h2>📈 דשבורד כללי</h2>
+                    <div class="dashboard-controls">
+                        <div class="month-selector">
+                            <label for="dashboardMonth">חודש נבחר:</label>
+                            <select id="dashboardMonth">
+                                <option value="01">ינואר</option>
+                                <option value="02">פברואר</option>
+                                <option value="03">מרץ</option>
+                                <option value="04">אפריל</option>
+                                <option value="05">מאי</option>
+                                <option value="06">יוני</option>
+                                <option value="07">יולי</option>
+                                <option value="08">אוגוסט</option>
+                                <option value="09">ספטמבר</option>
+                                <option value="10">אוקטובר</option>
+                                <option value="11">נובמבר</option>
+                                <option value="12">דצמבר</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="dashboard-grid">
+                    <!-- Monthly KPIs -->
+                    <div class="kpi-card">
+                        <h3>📊 סיכום חודשי</h3>
+                        <div class="kpi-grid">
+                            <div class="kpi-item expenses">
+                                <span class="kpi-label">הוצאות:</span>
+                                <span id="monthlyExpenses" class="kpi-value">₪0.00</span>
+                            </div>
+                            <div class="kpi-item income">
+                                <span class="kpi-label">הכנסות:</span>
+                                <span id="monthlyIncome" class="kpi-value">₪0.00</span>
+                            </div>
+                            <div class="kpi-item net">
+                                <span class="kpi-label">נטו:</span>
+                                <span id="monthlyNet" class="kpi-value">₪0.00</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Annual KPIs -->
+                    <div class="kpi-card">
+                        <h3>📈 סיכום שנתי</h3>
+                        <div class="kpi-grid">
+                            <div class="kpi-item expenses">
+                                <span class="kpi-label">הוצאות:</span>
+                                <span id="annualExpenses" class="kpi-value">₪0.00</span>
+                            </div>
+                            <div class="kpi-item income">
+                                <span class="kpi-label">הכנסות:</span>
+                                <span id="annualIncome" class="kpi-value">₪0.00</span>
+                            </div>
+                            <div class="kpi-item net">
+                                <span class="kpi-label">נטו:</span>
+                                <span id="annualNet" class="kpi-value">₪0.00</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Category Breakdown -->
+                    <div class="chart-card">
+                        <h3>💰 פילוח קטגוריות</h3>
+                        <div id="categoryBreakdown" class="category-breakdown">
+                            <!-- Category breakdown will be populated here -->
+                        </div>
+                    </div>
+
+                    <!-- Monthly Trend -->
+                    <div class="chart-card">
+                        <h3>📊 מגמה חודשית</h3>
+                        <div id="monthlyTrend" class="monthly-trend">
+                            <!-- Monthly trend chart will be populated here -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Annual Summary Table -->
+                <div class="annual-summary-section">
+                    <div class="summary-card full-width">
+                        <h3>📋 טבלת סיכום שנתי - פילוח קטגוריות חודשי</h3>
+                        <div class="table-container">
+                            <div id="annualSummaryTable" class="annual-summary-table">
+                                <!-- Annual summary table will be populated here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Scripts -->
+    <script src="budget.js"></script>
+</body>
+</html>
