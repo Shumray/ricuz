@@ -121,7 +121,7 @@ class BudgetSystem {
         const selectedYear = this.currentYear;
 
         // Add years from 2023 to actual current year + 40
-        for (let year = 2024; year <= actualCurrentYear + 40; year++) {
+        for (let year = 2024; year <= actualCurrentYear + 51; year++) {
             const option = document.createElement('option');
             option.value = year;
             option.textContent = year;
