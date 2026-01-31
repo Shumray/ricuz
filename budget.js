@@ -11,6 +11,7 @@ class BudgetSystem {
         this.currentYear = new Date().getFullYear();
         this.currentTab = 'data-entry';
         this.lastSelectedMonth = null; // Remember last selected month for new transactions
+        this.lastSelectedYear = null; // Remember last selected year
 
         this.initialize();
     }
@@ -18,9 +19,8 @@ class BudgetSystem {
     // Initialize the system
     async initialize() {
         await this.initializeFromMappingsFile();
-        this.initializeYearSelector();
-        this.initializeYearSelector();
         this.loadData();
+        this.initializeYearSelector();
         this.initializeEventListeners();
         this.setCurrentMonth();
         this.updateDisplay();
@@ -117,12 +117,17 @@ class BudgetSystem {
         const yearSelect = document.getElementById('yearSelect');
         const currentYear = new Date().getFullYear();
         
+        // Use saved year if available, otherwise use current year
+        const savedYear = this.lastSelectedYear;
+        const selectedYear = savedYear || currentYear;
+        this.currentYear = selectedYear;
+
         // Add years from 2023 to current year + 2
         for (let year = 2023; year <= currentYear + 2; year++) {
             const option = document.createElement('option');
             option.value = year;
             option.textContent = year;
-            if (year === this.currentYear) {
+            if (year === selectedYear) {
                 option.selected = true;
             }
             yearSelect.appendChild(option);
@@ -131,6 +136,7 @@ class BudgetSystem {
         // Add event listener for year change
         yearSelect.addEventListener('change', (e) => {
             this.currentYear = parseInt(e.target.value);
+            this.lastSelectedYear = this.currentYear;
             this.saveData();
             this.updateDisplay();
             this.showNotification(`עברת לשנת ${this.currentYear}`, 'info');
@@ -1595,7 +1601,8 @@ class BudgetSystem {
             categories: this.categories,
             openingBalances: Array.from(this.openingBalances.entries()),
             monthlyNotes: this.monthlyNotes ? Array.from(this.monthlyNotes.entries()) : [],
-            lastSelectedMonth: this.lastSelectedMonth
+            lastSelectedMonth: this.lastSelectedMonth,
+            lastSelectedYear: this.lastSelectedYear
         };
         localStorage.setItem('budgetData', JSON.stringify(data));
     }
@@ -1663,6 +1670,9 @@ class BudgetSystem {
                 if (data.lastSelectedMonth) {
                     this.lastSelectedMonth = data.lastSelectedMonth;
                 }
+                if (data.lastSelectedYear) {
+                    this.lastSelectedYear = data.lastSelectedYear;
+                }
 
                 console.log(`Loaded ${this.transactions.length} transactions for year ${this.currentYear}`);
             } catch (error) {
@@ -1681,6 +1691,7 @@ class BudgetSystem {
             openingBalances: Array.from(this.openingBalances.entries()),
             monthlyNotes: this.monthlyNotes ? Array.from(this.monthlyNotes.entries()) : [],
             lastSelectedMonth: this.lastSelectedMonth,
+            lastSelectedYear: this.lastSelectedYear,
             exportDate: new Date().toISOString(),
             version: '1.3'
         };
@@ -1747,6 +1758,11 @@ class BudgetSystem {
                     if (data.lastSelectedMonth) {
                         this.lastSelectedMonth = data.lastSelectedMonth;
                     }
+                    if (data.lastSelectedYear) {
+                        this.lastSelectedYear = data.lastSelectedYear;
+                        this.currentYear = this.lastSelectedYear;
+                        document.getElementById('yearSelect').value = this.currentYear;
+                    }
 
                     this.saveData();
                     this.updateDisplay();
@@ -1803,41 +1819,61 @@ class BudgetSystem {
             font-family: 'Segoe UI', 'Arial', sans-serif;
             direction: rtl;
             text-align: right;
-            margin: 20px;
+            margin: 15px;
             background: #f8f9fa;
             color: #333;
         }
         .report-header {
             background: linear-gradient(135deg, #1f4e79 0%, #2e86ab 100%);
             color: white;
-            padding: 30px;
-            border-radius: 15px;
+            padding: 15px 20px;
+            border-radius: 8px;
             text-align: center;
-            margin-bottom: 30px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            margin-bottom: 15px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .report-header h1 {
+            margin: 5px 0;
+            font-size: 1.5rem;
+        }
+        .report-header h2 {
+            margin: 5px 0;
+            font-size: 1.2rem;
+            font-weight: 500;
+        }
+        .report-header p {
+            margin: 5px 0;
+            font-size: 0.9rem;
+            opacity: 0.9;
         }
         .summary-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 20px;
-            margin-bottom: 30px;
+            gap: 15px;
+            margin-bottom: 15px;
         }
         .summary-card {
             background: white;
-            padding: 25px;
-            border-radius: 12px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
             border: 2px solid #e0e6ed;
+        }
+        .summary-card h3 {
+            margin-top: 0;
+            margin-bottom: 10px;
+            font-size: 1.1rem;
         }
         .balance-table {
             width: 100%;
             border-collapse: collapse;
-            margin-bottom: 20px;
+            margin-bottom: 10px;
         }
         .balance-table th, .balance-table td {
-            padding: 12px;
+            padding: 8px 10px;
             text-align: right;
             border-bottom: 1px solid #ddd;
+            font-size: 0.9rem;
         }
         .balance-table th {
             background: #f8f9fa;
@@ -1850,12 +1886,13 @@ class BudgetSystem {
         .transactions-table {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 20px;
+            margin-top: 10px;
         }
         .transactions-table th, .transactions-table td {
-            padding: 10px;
+            padding: 6px 8px;
             text-align: right;
             border: 1px solid #ddd;
+            font-size: 0.85rem;
         }
         .transactions-table th {
             background: #1f4e79;
@@ -1866,15 +1903,41 @@ class BudgetSystem {
         }
         .notes-section {
             background: #fff3e0;
-            padding: 20px;
-            border-radius: 8px;
+            padding: 12px 15px;
+            border-radius: 6px;
             border: 2px solid #ff9800;
-            margin: 20px 0;
+            margin: 15px 0;
+        }
+        .notes-section h3 {
+            margin-top: 0;
+            margin-bottom: 8px;
+            font-size: 1rem;
         }
         @media print {
-            body { background: white; }
-            .report-header { background: #1f4e79 !important; }
+            body { 
+                background: white;
+                margin: 10px;
+            }
+            .report-header { 
+                background: #1f4e79 !important;
+                padding: 10px 15px !important;
+                margin-bottom: 10px !important;
+            }
+            .report-header h1 {
+                font-size: 1.3rem !important;
+            }
+            .report-header h2 {
+                font-size: 1rem !important;
+            }
+            .summary-grid {
+                gap: 10px !important;
+                margin-bottom: 10px !important;
+            }
+            .summary-card {
+                padding: 10px !important;
+            }
             .print-buttons { display: none !important; }
+            .page-break { page-break-before: always; }
         }
         .print-buttons {
             position: fixed;
@@ -1902,13 +1965,32 @@ class BudgetSystem {
         .close-btn {
             background: #f44336;
         }
+        .save-btn {
+            background: #4caf50;
+        }
     </style>
 </head>
 <body>
     <div class="print-buttons">
         <button class="print-btn" onclick="window.print()">🖨️ הדפס דוח</button>
+        <button class="print-btn save-btn" onclick="saveAsHTML()">💾 שמור כ-HTML</button>
         <button class="print-btn close-btn" onclick="window.close()">❌ סגור</button>
     </div>
+    
+    <script>
+        function saveAsHTML() {
+            // Clone the document and remove the buttons
+            const htmlContent = document.documentElement.outerHTML;
+            const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = 'דוח-חודשי-' + document.querySelector('.report-header h2').textContent.replace(/ /g, '-') + '.html';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(link.href);
+        }
+    </script>
     
     <div class="report-header">
         <h1>דוח חודשי מפורט</h1>
@@ -2025,7 +2107,7 @@ class BudgetSystem {
                 }
             });
             
-            this.showNotification(`דוח ${monthName} נפתח בחלון חדש - לחץ Ctrl+P להדפסה או Esc לסגירה`, 'success');
+            this.showNotification(`דוח ${monthName} נפתח בחלון חדש - Ctrl+P להדפסה, לחץ על 💾 לשמירה כ-HTML, או Esc לסגירה`, 'success');
         } else {
             // Fallback if popup is blocked - create downloadable file
             const reportBlob = new Blob([reportHTML], { type: 'text/html;charset=utf-8' });
