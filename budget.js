@@ -10,7 +10,8 @@ class BudgetSystem {
         this.currentMonth = new Date().getMonth() + 1;
         this.currentYear = new Date().getFullYear();
         this.currentTab = 'data-entry';
-        
+        this.lastSelectedMonth = null; // Remember last selected month for new transactions
+
         this.initialize();
     }
 
@@ -126,9 +127,13 @@ class BudgetSystem {
 
     // Set current month
     setCurrentMonth() {
-        const currentMonth = String(new Date().getMonth() + 1).padStart(2, '0');
+        // Use saved month if available, otherwise use current month
+        const savedMonth = this.lastSelectedMonth;
+        const currentMonth = savedMonth || String(new Date().getMonth() + 1).padStart(2, '0');
+
         document.getElementById('monthSelect').value = currentMonth;
         document.getElementById('dashboardMonth').value = currentMonth;
+        document.getElementById('dataEntryMonthSelect').value = currentMonth;
         this.currentMonth = parseInt(currentMonth);
     }
 
@@ -182,6 +187,17 @@ class BudgetSystem {
 
         document.getElementById('dashboardMonth').addEventListener('change', () => {
             this.updateDashboard();
+        });
+
+        // Data entry month filter
+        document.getElementById('dataEntryMonthSelect').addEventListener('change', (e) => {
+            const selectedValue = e.target.value;
+            // Save the selected month if it's not "all"
+            if (selectedValue && selectedValue !== 'all') {
+                this.lastSelectedMonth = selectedValue;
+                this.saveData();
+            }
+            this.updateTransactionsTable();
         });
 
         // Export monthly report
@@ -242,7 +258,6 @@ class BudgetSystem {
         
         if (editData) {
             // Fill form with existing data for editing
-            document.getElementById('month').value = String(editData.month).padStart(2, '0');
             document.getElementById('item').value = editData.item;
             document.getElementById('amount').value = Math.abs(editData.amount);
             document.getElementById('note').value = editData.note || '';
@@ -258,17 +273,17 @@ class BudgetSystem {
             document.querySelector('#transactionForm h3').textContent = 'עריכת עסקה';
             document.querySelector('#newTransactionForm button[type="submit"]').innerHTML = '💾 עדכן';
             
-            // Store the ID for updating
+            // Store the ID for updating and remember the original month
             document.getElementById('newTransactionForm').dataset.editId = editData.id;
+            document.getElementById('newTransactionForm').dataset.editMonth = editData.month;
         } else {
-            // New transaction mode - set to current month
-            const currentMonth = String(new Date().getMonth() + 1).padStart(2, '0');
-            document.getElementById('month').value = currentMonth;
+            // New transaction mode
             document.getElementById('isCheck').checked = false;
             delete this.currentCheckData;
             document.querySelector('#transactionForm h3').textContent = 'עסקה חדשה';
             document.querySelector('#newTransactionForm button[type="submit"]').innerHTML = '💾 שמור';
             delete document.getElementById('newTransactionForm').dataset.editId;
+            delete document.getElementById('newTransactionForm').dataset.editMonth;
         }
         
         document.getElementById('item').focus();
@@ -290,8 +305,19 @@ class BudgetSystem {
         const form = document.getElementById('newTransactionForm');
         const isEditing = !!form.dataset.editId;
         
+        // For editing, use the original month; for new transactions, use the selected month from header
+        const selectedMonth = isEditing
+            ? parseInt(form.dataset.editMonth)
+            : parseInt(document.getElementById('dataEntryMonthSelect').value);
+
+        // Don't allow adding to "all months"
+        if (!isEditing && (!selectedMonth || isNaN(selectedMonth))) {
+            alert('אנא בחר חודש ספציפי להוספת עסקה חדשה');
+            return;
+        }
+
         const formData = {
-            month: parseInt(document.getElementById('month').value),
+            month: selectedMonth,
             item: document.getElementById('item').value.trim(),
             amount: parseFloat(document.getElementById('amount').value),
             note: document.getElementById('note').value.trim(),
@@ -309,6 +335,7 @@ class BudgetSystem {
             alert('אנא הזן את פרטי הצ\'יק');
             return;
         }
+
 
         // Determine type automatically
         const type = this.getTransactionType(formData.item);
@@ -797,17 +824,27 @@ class BudgetSystem {
         const tbody = document.getElementById('transactionsBody');
         tbody.innerHTML = '';
 
+        // Get selected month filter from data entry tab
+        const selectedMonth = document.getElementById('dataEntryMonthSelect').value;
+
         // Filter transactions by current year - handle both old data (without year) and new data (with year)
-        const currentYearTransactions = this.transactions.filter(t => {
+        let currentYearTransactions = this.transactions.filter(t => {
             const transactionYear = t.year || this.currentYear; // Use current year if no year specified
             return transactionYear === this.currentYear;
         });
         
-        console.log(`Found ${currentYearTransactions.length} transactions for year ${this.currentYear}`);
-        
+        // Filter by month if a specific month is selected (not "all")
+        if (selectedMonth && selectedMonth !== 'all') {
+            const monthNumber = parseInt(selectedMonth);
+            currentYearTransactions = currentYearTransactions.filter(t => t.month === monthNumber);
+            console.log(`Filtered to ${currentYearTransactions.length} transactions for month ${selectedMonth}`);
+        } else {
+            console.log(`Showing all ${currentYearTransactions.length} transactions for year ${this.currentYear}`);
+        }
+
         const sortedTransactions = [...currentYearTransactions].sort((a, b) => {
-            if (a.month !== b.month) return b.month - a.month;
-            return b.id - a.id;
+            // Sort alphabetically by item name (א-ב)
+            return a.item.localeCompare(b.item, 'he');
         });
 
         sortedTransactions.forEach(transaction => {
@@ -837,17 +874,47 @@ class BudgetSystem {
     }
 
     // Mapping management
-    showMappingForm() {
+    showMappingForm(editData = null) {
         document.getElementById('mappingForm').style.display = 'block';
+
+        if (editData) {
+            // Fill form with existing data for editing
+            document.getElementById('mappingItem').value = editData.item;
+            document.getElementById('mappingItem').readOnly = true; // Can't change item name, only category
+            document.getElementById('mappingCategory').value = editData.category;
+
+            // Change form title and button text
+            document.querySelector('#mappingForm h3').textContent = 'עריכת מיפוי';
+            document.querySelector('#newMappingForm button[type="submit"]').innerHTML = '💾 עדכן';
+
+            // Store the original item for updating
+            document.getElementById('newMappingForm').dataset.editItem = editData.item;
+        } else {
+            // New mapping mode
+            document.getElementById('mappingItem').readOnly = false;
+            document.querySelector('#mappingForm h3').textContent = 'מיפוי חדש';
+            document.querySelector('#newMappingForm button[type="submit"]').innerHTML = '💾 שמור';
+            delete document.getElementById('newMappingForm').dataset.editItem;
+        }
+
         document.getElementById('mappingItem').focus();
     }
 
     hideMappingForm() {
         document.getElementById('mappingForm').style.display = 'none';
         document.getElementById('newMappingForm').reset();
+        document.getElementById('mappingItem').readOnly = false;
+
+        // Reset form to "new mapping" mode
+        document.querySelector('#mappingForm h3').textContent = 'מיפוי חדש';
+        document.querySelector('#newMappingForm button[type="submit"]').innerHTML = '💾 שמור';
+        delete document.getElementById('newMappingForm').dataset.editItem;
     }
 
     addMapping() {
+        const form = document.getElementById('newMappingForm');
+        const isEditing = !!form.dataset.editItem;
+
         const item = document.getElementById('mappingItem').value.trim();
         const category = document.getElementById('mappingCategory').value;
 
@@ -856,15 +923,53 @@ class BudgetSystem {
             return;
         }
 
-        this.mappings.set(item, category);
-        this.saveData();
-        this.updateMappingTable();
-        this.hideMappingForm();
-        this.updateTransactionsTable(); // Refresh transactions to show updated categories
-        this.showNotification(`המיפוי נוסף בהצלחה: "${item}" → "${category}"`, 'success');
+        if (isEditing) {
+            // Update existing mapping
+            const oldItem = form.dataset.editItem;
+
+            // If item name hasn't changed (it shouldn't since it's readonly), just update category
+            this.mappings.set(oldItem, category);
+
+            this.saveData();
+            this.updateMappingTable();
+            this.updateTransactionsTable(); // Refresh transactions to show updated categories
+            this.hideMappingForm();
+            this.showNotification(`המיפוי עודכן בהצלחה: "${item}" → "${category}"`, 'success');
+        } else {
+            // Add new mapping
+            if (this.mappings.has(item)) {
+                if (!confirm(`המיפוי "${item}" כבר קיים. האם לעדכן אותו?`)) {
+                    return;
+                }
+            }
+
+            this.mappings.set(item, category);
+            this.saveData();
+            this.updateMappingTable();
+            this.updateTransactionsTable(); // Refresh transactions to show updated categories
+            this.hideMappingForm();
+            this.showNotification(`המיפוי נוסף בהצלחה: "${item}" → "${category}"`, 'success');
+        }
+    }
+
+    editMapping(item, category) {
+        this.showMappingForm({ item, category });
+    }
+
+    // Count how many transactions use a specific item
+    countTransactionsUsingItem(item) {
+        return this.transactions.filter(t => t.item === item).length;
     }
 
     deleteMapping(item) {
+        // Check if item is being used in transactions
+        const usageCount = this.countTransactionsUsingItem(item);
+
+        if (usageCount > 0) {
+            alert(`❌ לא ניתן למחוק את המיפוי "${item}"\n\nהפריט בשימוש ב-${usageCount} עסקאות.\nמחק תחילה את כל העסקאות המשתמשות בפריט זה.`);
+            return;
+        }
+
         if (confirm(`האם אתה בטוח שברצונך למחוק את המיפוי של "${item}"?`)) {
             this.mappings.delete(item);
             this.saveData();
@@ -883,11 +988,25 @@ class BudgetSystem {
 
         sortedMappings.forEach(([item, category]) => {
             const row = document.createElement('tr');
+
+            // Count how many transactions use this item
+            const usageCount = this.countTransactionsUsingItem(item);
+
+            // Create usage indicator
+            let usageIndicator = '';
+            if (usageCount > 0) {
+                usageIndicator = `<span class="usage-badge" title="${usageCount} עסקאות משתמשות בפריט זה">📊 ${usageCount}</span>`;
+            } else {
+                usageIndicator = `<span class="no-usage-badge" title="אין עסקאות משתמשות בפריט זה">⚪ 0</span>`;
+            }
+
             row.innerHTML = `
                 <td>${item}</td>
                 <td><span class="category-badge">${category}</span></td>
+                <td class="usage-cell">${usageIndicator}</td>
                 <td class="action-buttons">
-                    <button onclick="budgetSystem.deleteMapping('${item}')" class="btn btn-danger btn-small">🗑️</button>
+                    <button onclick="budgetSystem.editMapping('${item}', '${category}')" class="btn btn-secondary btn-small" title="ערוך">✏️</button>
+                    <button onclick="budgetSystem.deleteMapping('${item}')" class="btn btn-danger btn-small" title="מחק">🗑️</button>
                 </td>
             `;
             tbody.appendChild(row);
@@ -1348,7 +1467,8 @@ class BudgetSystem {
             incomeItems: Array.from(this.incomeItems),
             categories: this.categories,
             openingBalances: Array.from(this.openingBalances.entries()),
-            monthlyNotes: this.monthlyNotes ? Array.from(this.monthlyNotes.entries()) : []
+            monthlyNotes: this.monthlyNotes ? Array.from(this.monthlyNotes.entries()) : [],
+            lastSelectedMonth: this.lastSelectedMonth
         };
         localStorage.setItem('budgetData', JSON.stringify(data));
     }
@@ -1390,7 +1510,10 @@ class BudgetSystem {
                 if (data.monthlyNotes) {
                     this.monthlyNotes = new Map(data.monthlyNotes);
                 }
-                
+                if (data.lastSelectedMonth) {
+                    this.lastSelectedMonth = data.lastSelectedMonth;
+                }
+
                 console.log(`Loaded ${this.transactions.length} transactions for year ${this.currentYear}`);
             } catch (error) {
                 console.error('Error loading saved data:', error);
@@ -1407,6 +1530,7 @@ class BudgetSystem {
             categories: this.categories,
             openingBalances: Array.from(this.openingBalances.entries()),
             monthlyNotes: this.monthlyNotes ? Array.from(this.monthlyNotes.entries()) : [],
+            lastSelectedMonth: this.lastSelectedMonth,
             exportDate: new Date().toISOString(),
             version: '1.3'
         };
@@ -1470,7 +1594,10 @@ class BudgetSystem {
                     if (data.monthlyNotes) {
                         this.monthlyNotes = new Map(data.monthlyNotes);
                     }
-                    
+                    if (data.lastSelectedMonth) {
+                        this.lastSelectedMonth = data.lastSelectedMonth;
+                    }
+
                     this.saveData();
                     this.updateDisplay();
                     this.showNotification('הנתונים יובאו בהצלחה!', 'success');

@@ -184,6 +184,58 @@ body {
     text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
+.header-controls {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    flex-wrap: wrap;
+}
+
+.month-selector-inline {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(255, 255, 255, 0.15);
+    padding: 8px 15px;
+    border-radius: 10px;
+    backdrop-filter: blur(10px);
+}
+
+.month-selector-inline label {
+    color: white;
+    font-weight: 600;
+    font-size: 1rem;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.month-select-inline {
+    padding: 8px 12px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.95);
+    color: #1f4e79;
+    font-size: 0.95rem;
+    font-weight: 600;
+    backdrop-filter: blur(10px);
+    transition: all 0.3s ease;
+    min-width: 120px;
+    cursor: pointer;
+}
+
+.month-select-inline:hover {
+    border-color: #1f4e79;
+    background: white;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.month-select-inline:focus {
+    outline: none;
+    border-color: #4caf50;
+    background: white;
+    box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.2);
+}
+
 /* Buttons */
 .btn {
     background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
@@ -345,6 +397,39 @@ body {
     font-size: 0.85rem;
     font-weight: 500;
     display: inline-block;
+}
+
+/* Usage Badge */
+.usage-badge {
+    background: linear-gradient(135deg, #e8f5e8 0%, #c8e6c9 100%);
+    color: #2e7d32;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    cursor: help;
+    box-shadow: 0 2px 4px rgba(46, 125, 50, 0.2);
+}
+
+.no-usage-badge {
+    background: linear-gradient(135deg, #f5f5f5 0%, #e0e0e0 100%);
+    color: #757575;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    cursor: help;
+    opacity: 0.7;
+}
+
+.usage-cell {
+    text-align: center;
 }
 
 /* Type Badge */

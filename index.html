@@ -45,7 +45,27 @@
             <div id="data-entry" class="tab-panel active">
                 <div class="panel-header">
                     <h2>📊 הזנת עסקאות</h2>
-                    <button id="addTransactionBtn" class="btn btn-primary">+ הוסף עסקה</button>
+                    <div class="header-controls">
+                        <div class="month-selector-inline">
+                            <label for="dataEntryMonthSelect">חודש:</label>
+                            <select id="dataEntryMonthSelect" class="month-select-inline">
+                                <option value="all">כל החודשים</option>
+                                <option value="01">ינואר</option>
+                                <option value="02">פברואר</option>
+                                <option value="03">מרץ</option>
+                                <option value="04">אפריל</option>
+                                <option value="05">מאי</option>
+                                <option value="06">יוני</option>
+                                <option value="07">יולי</option>
+                                <option value="08">אוגוסט</option>
+                                <option value="09">ספטמבר</option>
+                                <option value="10">אוקטובר</option>
+                                <option value="11">נובמבר</option>
+                                <option value="12">דצמבר</option>
+                            </select>
+                        </div>
+                        <button id="addTransactionBtn" class="btn btn-primary">+ הוסף עסקה</button>
+                    </div>
                 </div>
 
                 <!-- Add Transaction Form -->
@@ -53,24 +73,6 @@
                     <h3>עסקה חדשה</h3>
                     <form id="newTransactionForm">
                         <div class="form-grid">
-                            <div class="form-group">
-                                <label for="month">חודש</label>
-                                <select id="month" required>
-                                    <option value="">בחר חודש</option>
-                                    <option value="01">ינואר</option>
-                                    <option value="02">פברואר</option>
-                                    <option value="03">מרץ</option>
-                                    <option value="04">אפריל</option>
-                                    <option value="05">מאי</option>
-                                    <option value="06">יוני</option>
-                                    <option value="07">יולי</option>
-                                    <option value="08">אוגוסט</option>
-                                    <option value="09">ספטמבר</option>
-                                    <option value="10">אוקטובר</option>
-                                    <option value="11">נובמבר</option>
-                                    <option value="12">דצמבר</option>
-                                </select>
-                            </div>
                             <div class="form-group">
                                 <label for="item">פריט</label>
                                 <input type="text" id="item" placeholder="התחל לכתוב ..." required autocomplete="off">
@@ -174,6 +176,7 @@
                             <tr>
                                 <th>פריט</th>
                                 <th>קטגוריה</th>
+                                <th>שימוש</th>
                                 <th>פעולות</th>
                             </tr>
                         </thead>
