@@ -115,15 +115,13 @@ class BudgetSystem {
     // Initialize year selector
     initializeYearSelector() {
         const yearSelect = document.getElementById('yearSelect');
-        const currentYear = new Date().getFullYear();
-        
-        // Use saved year if available, otherwise use current year
-        const savedYear = this.lastSelectedYear;
-        const selectedYear = savedYear || currentYear;
-        this.currentYear = selectedYear;
+        const actualCurrentYear = new Date().getFullYear();
 
-        // Add years from 2023 to current year + 2
-        for (let year = 2023; year <= currentYear + 2; year++) {
+        // If currentYear was already set from loadData, use it; otherwise use actual current year
+        const selectedYear = this.currentYear;
+
+        // Add years from 2023 to actual current year + 2
+        for (let year = 2023; year <= actualCurrentYear + 2; year++) {
             const option = document.createElement('option');
             option.value = year;
             option.textContent = year;
@@ -1612,6 +1610,18 @@ class BudgetSystem {
         if (savedData) {
             try {
                 const data = JSON.parse(savedData);
+
+                // Load lastSelectedYear FIRST before using this.currentYear
+                if (data.lastSelectedYear) {
+                    this.lastSelectedYear = data.lastSelectedYear;
+                    this.currentYear = this.lastSelectedYear;
+                }
+
+                // Load lastSelectedMonth
+                if (data.lastSelectedMonth) {
+                    this.lastSelectedMonth = data.lastSelectedMonth;
+                }
+
                 this.transactions = data.transactions || [];
                 
                 // Update old transactions without year to use current year
@@ -1666,12 +1676,6 @@ class BudgetSystem {
                 }
                 if (data.monthlyNotes) {
                     this.monthlyNotes = new Map(data.monthlyNotes);
-                }
-                if (data.lastSelectedMonth) {
-                    this.lastSelectedMonth = data.lastSelectedMonth;
-                }
-                if (data.lastSelectedYear) {
-                    this.lastSelectedYear = data.lastSelectedYear;
                 }
 
                 console.log(`Loaded ${this.transactions.length} transactions for year ${this.currentYear}`);
