@@ -601,13 +601,19 @@ class BudgetSystem {
                     box-shadow: 0 10px 25px rgba(0,0,0,0.3);
                 `;
 
-                // Get existing categories from mappings
-                const existingCategories = [...new Set(Array.from(this.mappings.values()))];
+                // Get existing categories from mappings (extract category names from mapping objects)
+                const existingCategories = [...new Set(
+                    Array.from(this.mappings.values()).map(mapping =>
+                        typeof mapping === 'object' ? mapping.category : mapping
+                    )
+                )];
                 const allCategories = [...this.categories]; // Use categories from mappings file
                 
-                // Combine and sort categories
-                const categories = [...new Set([...existingCategories, ...allCategories])].sort();
-                
+                // Combine and sort categories alphabetically
+                const categories = [...new Set([...existingCategories, ...allCategories])].sort((a, b) => {
+                    return a.localeCompare(b, 'he');
+                });
+
                 let categoriesOptions = categories.map(cat => 
                     `<option value="${cat}"${cat === 'שונות' ? ' selected' : ''}>${cat}</option>`
                 ).join('');
