@@ -117,8 +117,6 @@ class BudgetSystem {
         const yearSelect = document.getElementById('yearSelect');
         const actualCurrentYear = new Date().getFullYear();
 
-        console.log('initializeYearSelector - currentYear:', this.currentYear, 'lastSelectedYear:', this.lastSelectedYear);
-
         // If currentYear was already set from loadData, use it; otherwise use actual current year
         const selectedYear = this.currentYear;
 
@@ -137,7 +135,6 @@ class BudgetSystem {
         yearSelect.addEventListener('change', (e) => {
             this.currentYear = parseInt(e.target.value);
             this.lastSelectedYear = this.currentYear;
-            console.log('Year changed to:', this.currentYear, 'lastSelectedYear:', this.lastSelectedYear);
             this.saveData();
             this.updateDisplay();
             this.showNotification(`עברת לשנת ${this.currentYear}`, 'info');
@@ -1605,7 +1602,6 @@ class BudgetSystem {
             lastSelectedMonth: this.lastSelectedMonth,
             lastSelectedYear: this.lastSelectedYear
         };
-        console.log('Saving data - lastSelectedYear:', this.lastSelectedYear);
         localStorage.setItem('budgetData', JSON.stringify(data));
         // Also save year separately as backup
         if (this.lastSelectedYear !== null && this.lastSelectedYear !== undefined) {
@@ -1619,20 +1615,16 @@ class BudgetSystem {
             try {
                 const data = JSON.parse(savedData);
 
-                console.log('Loading data - lastSelectedYear from storage:', data.lastSelectedYear);
-
                 // Load lastSelectedYear FIRST before using this.currentYear
                 if (data.lastSelectedYear) {
                     this.lastSelectedYear = data.lastSelectedYear;
                     this.currentYear = this.lastSelectedYear;
-                    console.log('Set currentYear to:', this.currentYear);
                 } else {
                     // Try loading from separate storage as backup
                     const savedYear = localStorage.getItem('lastSelectedYear');
                     if (savedYear) {
                         this.lastSelectedYear = parseInt(savedYear);
                         this.currentYear = this.lastSelectedYear;
-                        console.log('Set currentYear from backup to:', this.currentYear);
                     }
                 }
 
