@@ -120,8 +120,8 @@ class BudgetSystem {
         // If currentYear was already set from loadData, use it; otherwise use actual current year
         const selectedYear = this.currentYear;
 
-        // Add years from 2023 to actual current year + 2
-        for (let year = 2023; year <= actualCurrentYear + 2; year++) {
+        // Add years from 2023 to actual current year + 40
+        for (let year = 2024; year <= actualCurrentYear + 40; year++) {
             const option = document.createElement('option');
             option.value = year;
             option.textContent = year;
