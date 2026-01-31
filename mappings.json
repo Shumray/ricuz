@@ -16,30 +16,113 @@
     "מענק עבודה"
   ],
   "mappings": {
-    "משכורת": "משכורת",
-    "ביטוח לאומי": "משכורת",
-    "מענק עבודה": "משכורת",
-    "סופרסל": "כלכלה",
-    "רמי לוי": "כלכלה", 
-    "מגא": "כלכלה",
-    "ויקטורי": "כלכלה",
-    "אושר עד": "כלכלה",
-    "הראל": "מיסים",
-    "מנורה": "מיסים",
-    "פניקס": "מיסים",
-    "כרטיסיה": "נסיעות",
-    "מונית": "נסיעות",
-    "גט": "נסיעות",
-    "רב קו": "נסיעות",
-    "עמלת בנק": "עמלת בנק",
-    "רופא": "טיפול רפואי",
-    "בית מרקחת": "טיפול רפואי",
-    "רופא שיניים": "טיפול רפואי",
-    "ביגוד": "ביגוד",
-    "תספורת": "ביגוד",
-    "ספר": "חינוך ותרבות",
-    "קורס": "חינוך ותרבות",
-    "קולנוע": "חינוך ותרבות",
-    "מוזיאון": "חינוך ותרבות"
+    "משכורת": {
+      "category": "משכורת",
+      "includeInMonthlyExpenses": false
+    },
+    "ביטוח לאומי": {
+      "category": "משכורת",
+      "includeInMonthlyExpenses": false
+    },
+    "מענק עבודה": {
+      "category": "משכורת",
+      "includeInMonthlyExpenses": false
+    },
+    "סופרסל": {
+      "category": "כלכלה",
+      "includeInMonthlyExpenses": true
+    },
+    "רמי לוי": {
+      "category": "כלכלה",
+      "includeInMonthlyExpenses": true
+    },
+    "מגא": {
+      "category": "כלכלה",
+      "includeInMonthlyExpenses": true
+    },
+    "ויקטורי": {
+      "category": "כלכלה",
+      "includeInMonthlyExpenses": true
+    },
+    "אושר עד": {
+      "category": "כלכלה",
+      "includeInMonthlyExpenses": true
+    },
+    "הראל": {
+      "category": "מיסים",
+      "includeInMonthlyExpenses": false
+    },
+    "מנורה": {
+      "category": "מיסים",
+      "includeInMonthlyExpenses": false
+    },
+    "פניקס": {
+      "category": "מיסים",
+      "includeInMonthlyExpenses": false
+    },
+    "כרטיסיה": {
+      "category": "נסיעות",
+      "includeInMonthlyExpenses": true
+    },
+    "מונית": {
+      "category": "נסיעות",
+      "includeInMonthlyExpenses": true
+    },
+    "גט": {
+      "category": "נסיעות",
+      "includeInMonthlyExpenses": true
+    },
+    "רב קו": {
+      "category": "נסיעות",
+      "includeInMonthlyExpenses": true
+    },
+    "עמלת בנק": {
+      "category": "עמלת בנק",
+      "includeInMonthlyExpenses": false
+    },
+    "ע מפעולות ישיר": {
+      "category": "עמלת בנק",
+      "includeInMonthlyExpenses": false
+    },
+    "מכבי": {
+      "category": "מיסים",
+      "includeInMonthlyExpenses": false
+    },
+    "רופא": {
+      "category": "טיפול רפואי",
+      "includeInMonthlyExpenses": true
+    },
+    "בית מרקחת": {
+      "category": "טיפול רפואי",
+      "includeInMonthlyExpenses": true
+    },
+    "רופא שיניים": {
+      "category": "טיפול רפואי",
+      "includeInMonthlyExpenses": true
+    },
+    "ביגוד": {
+      "category": "ביגוד",
+      "includeInMonthlyExpenses": true
+    },
+    "תספורת": {
+      "category": "ביגוד",
+      "includeInMonthlyExpenses": true
+    },
+    "ספר": {
+      "category": "חינוך ותרבות",
+      "includeInMonthlyExpenses": true
+    },
+    "קורס": {
+      "category": "חינוך ותרבות",
+      "includeInMonthlyExpenses": true
+    },
+    "קולנוע": {
+      "category": "חינוך ותרבות",
+      "includeInMonthlyExpenses": true
+    },
+    "מוזיאון": {
+      "category": "חינוך ותרבות",
+      "includeInMonthlyExpenses": true
+    }
   }
 }

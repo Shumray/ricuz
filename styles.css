@@ -432,6 +432,29 @@ body {
     text-align: center;
 }
 
+/* Monthly Expenses Indicator */
+.monthly-expense-cell {
+    text-align: center;
+}
+
+.monthly-expense-badge {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 15px;
+    font-size: 1rem;
+    cursor: help;
+}
+
+.monthly-expense-badge.yes {
+    background: linear-gradient(135deg, #e8f5e8 0%, #c8e6c9 100%);
+    color: #2e7d32;
+}
+
+.monthly-expense-badge.no {
+    background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%);
+    color: #c62828;
+}
+
 /* Type Badge */
 .type-badge {
     padding: 4px 12px;
@@ -660,6 +683,81 @@ body {
 .category-amount {
     font-weight: 600;
     font-family: 'Courier New', monospace;
+}
+
+/* Actual Expenses Summary */
+.expenses-subtitle {
+    color: #666;
+    font-size: 0.9rem;
+    margin: -10px 0 15px 0;
+    font-style: italic;
+}
+
+.actual-expenses-summary {
+    margin-top: 10px;
+}
+
+.expenses-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+.expenses-table thead {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+.expenses-table th {
+    padding: 12px 15px;
+    text-align: right;
+    font-weight: 600;
+    font-size: 0.95rem;
+}
+
+.expenses-table tbody tr {
+    border-bottom: 1px solid #e9ecef;
+    transition: background-color 0.2s ease;
+}
+
+.expenses-table tbody tr:hover {
+    background-color: #f8f9fa;
+}
+
+.expenses-table td {
+    padding: 12px 15px;
+    text-align: right;
+}
+
+.expenses-table .amount-cell {
+    font-family: 'Courier New', monospace;
+    font-weight: 600;
+    color: #c2185b;
+    text-align: left;
+}
+
+.expenses-table .percentage-cell {
+    text-align: center;
+    color: #666;
+    font-weight: 500;
+}
+
+.expenses-table tfoot {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border-top: 2px solid #667eea;
+}
+
+.expenses-table .total-row td {
+    padding: 15px;
+    font-size: 1.05rem;
+}
+
+.expenses-table .total-row .amount-cell {
+    color: #1f4e79;
+    font-size: 1.1rem;
 }
 
 .month-selector {

@@ -161,6 +161,16 @@
                                     <option value="שונות">שונות</option>
                                 </select>
                             </div>
+                            <div class="form-group">
+                                <label class="checkbox-container">
+                                    <input type="checkbox" id="includeInMonthlyExpenses" checked>
+                                    <span class="checkmark"></span>
+                                    <span class="checkbox-label">כלול בטבלת "הוצאות החודש"</span>
+                                </label>
+                                <small style="color: #666; margin-top: 5px; display: block;">
+                                    פריטים מסומנים יופיעו בטבלת "הוצאות החודש" בתצוגה חודשית (ללא תשלומי צ'יקים)
+                                </small>
+                            </div>
                         </div>
                         <div class="form-actions">
                             <button type="submit" class="btn btn-primary">💾 שמור</button>
@@ -177,6 +187,7 @@
                                 <th>פריט</th>
                                 <th>קטגוריה</th>
                                 <th>שימוש</th>
+                                <th>הוצאות חודשיות</th>
                                 <th>פעולות</th>
                             </tr>
                         </thead>
@@ -227,6 +238,15 @@
                         <h3>📊 סיכום לפי קטגוריות</h3>
                         <div id="categorySummary" class="category-summary">
                             <!-- Category summary will be populated here -->
+                        </div>
+                    </div>
+
+                    <!-- Actual Expenses (based on mapping property) -->
+                    <div class="summary-card">
+                        <h3 id="actualExpensesTitle">💰 הוצאות החודש</h3>
+                        <p class="expenses-subtitle">פריטים המסומנים ב-"כלול בטבלת הוצאות החודש" (ללא תשלומי צ'יקים)</p>
+                        <div id="actualExpensesSummary" class="actual-expenses-summary">
+                            <!-- Actual expenses will be populated here -->
                         </div>
                     </div>
 

@@ -2,7 +2,7 @@
 class BudgetSystem {
     constructor() {
         this.transactions = [];
-        this.mappings = new Map();
+        this.mappings = new Map(); // item -> { category, includeInMonthlyExpenses }
         this.incomeItems = new Set();
         this.categories = [];
         this.openingBalances = new Map(); // Store opening balance per month per year
@@ -38,11 +38,23 @@ class BudgetSystem {
             // Load income items
             this.incomeItems = new Set(mappingsData.incomeItems || []);
             
-            // Load mappings
+            // Load mappings - support both old (string) and new (object) format
             this.mappings = new Map();
             if (mappingsData.mappings) {
-                Object.entries(mappingsData.mappings).forEach(([item, category]) => {
-                    this.mappings.set(item, category);
+                Object.entries(mappingsData.mappings).forEach(([item, value]) => {
+                    if (typeof value === 'string') {
+                        // Old format: "item": "category"
+                        this.mappings.set(item, {
+                            category: value,
+                            includeInMonthlyExpenses: false
+                        });
+                    } else {
+                        // New format: "item": { category: "...", includeInMonthlyExpenses: true/false }
+                        this.mappings.set(item, {
+                            category: value.category,
+                            includeInMonthlyExpenses: value.includeInMonthlyExpenses !== false
+                        });
+                    }
                 });
             }
             
@@ -385,17 +397,37 @@ class BudgetSystem {
     getCategoryForItem(item) {
         // Try exact match first
         if (this.mappings.has(item)) {
-            return this.mappings.get(item);
+            const mapping = this.mappings.get(item);
+            return mapping.category || 'לא מקוטלג';
         }
 
         // Try partial match
-        for (const [mappedItem, category] of this.mappings) {
+        for (const [mappedItem, mapping] of this.mappings) {
             if (item.includes(mappedItem) || mappedItem.includes(item)) {
-                return category;
+                return mapping.category || 'לא מקוטלג';
             }
         }
 
         return 'לא מקוטלג';
+    }
+
+    // Check if item should be included in monthly expenses
+    shouldIncludeInMonthlyExpenses(item) {
+        // Try exact match first
+        if (this.mappings.has(item)) {
+            const mapping = this.mappings.get(item);
+            return mapping.includeInMonthlyExpenses === true;
+        }
+
+        // Try partial match
+        for (const [mappedItem, mapping] of this.mappings) {
+            if (item.includes(mappedItem) || mappedItem.includes(item)) {
+                return mapping.includeInMonthlyExpenses === true;
+            }
+        }
+
+        // Default: if no mapping found, include it (for backward compatibility)
+        return true;
     }
 
     // Determine transaction type based on item name
@@ -882,6 +914,7 @@ class BudgetSystem {
             document.getElementById('mappingItem').value = editData.item;
             document.getElementById('mappingItem').readOnly = true; // Can't change item name, only category
             document.getElementById('mappingCategory').value = editData.category;
+            document.getElementById('includeInMonthlyExpenses').checked = editData.includeInMonthlyExpenses !== false;
 
             // Change form title and button text
             document.querySelector('#mappingForm h3').textContent = 'עריכת מיפוי';
@@ -917,6 +950,7 @@ class BudgetSystem {
 
         const item = document.getElementById('mappingItem').value.trim();
         const category = document.getElementById('mappingCategory').value;
+        const includeInMonthlyExpenses = document.getElementById('includeInMonthlyExpenses').checked;
 
         if (!item || !category) {
             alert('אנא מלא את כל השדות');
@@ -927,8 +961,11 @@ class BudgetSystem {
             // Update existing mapping
             const oldItem = form.dataset.editItem;
 
-            // If item name hasn't changed (it shouldn't since it's readonly), just update category
-            this.mappings.set(oldItem, category);
+            // If item name hasn't changed (it shouldn't since it's readonly), just update category and flag
+            this.mappings.set(oldItem, {
+                category: category,
+                includeInMonthlyExpenses: includeInMonthlyExpenses
+            });
 
             this.saveData();
             this.updateMappingTable();
@@ -943,7 +980,10 @@ class BudgetSystem {
                 }
             }
 
-            this.mappings.set(item, category);
+            this.mappings.set(item, {
+                category: category,
+                includeInMonthlyExpenses: includeInMonthlyExpenses
+            });
             this.saveData();
             this.updateMappingTable();
             this.updateTransactionsTable(); // Refresh transactions to show updated categories
@@ -952,8 +992,8 @@ class BudgetSystem {
         }
     }
 
-    editMapping(item, category) {
-        this.showMappingForm({ item, category });
+    editMapping(item, category, includeInMonthlyExpenses) {
+        this.showMappingForm({ item, category, includeInMonthlyExpenses });
     }
 
     // Count how many transactions use a specific item
@@ -986,7 +1026,7 @@ class BudgetSystem {
         // Convert mappings to array and sort by item name
         const sortedMappings = Array.from(this.mappings.entries()).sort((a, b) => a[0].localeCompare(b[0]));
 
-        sortedMappings.forEach(([item, category]) => {
+        sortedMappings.forEach(([item, mapping]) => {
             const row = document.createElement('tr');
 
             // Count how many transactions use this item
@@ -1000,12 +1040,18 @@ class BudgetSystem {
                 usageIndicator = `<span class="no-usage-badge" title="אין עסקאות משתמשות בפריט זה">⚪ 0</span>`;
             }
 
+            // Create monthly expenses indicator
+            const monthlyExpensesIndicator = mapping.includeInMonthlyExpenses
+                ? '<span class="monthly-expense-badge yes" title="נכלל בטבלת הוצאות החודש">✅</span>'
+                : '<span class="monthly-expense-badge no" title="לא נכלל בטבלת הוצאות החודש">❌</span>';
+
             row.innerHTML = `
                 <td>${item}</td>
-                <td><span class="category-badge">${category}</span></td>
+                <td><span class="category-badge">${mapping.category}</span></td>
                 <td class="usage-cell">${usageIndicator}</td>
+                <td class="monthly-expense-cell">${monthlyExpensesIndicator}</td>
                 <td class="action-buttons">
-                    <button onclick="budgetSystem.editMapping('${item}', '${category}')" class="btn btn-secondary btn-small" title="ערוך">✏️</button>
+                    <button onclick="budgetSystem.editMapping('${item}', '${mapping.category}', ${mapping.includeInMonthlyExpenses})" class="btn btn-secondary btn-small" title="ערוך">✏️</button>
                     <button onclick="budgetSystem.deleteMapping('${item}')" class="btn btn-danger btn-small" title="מחק">🗑️</button>
                 </td>
             `;
@@ -1018,6 +1064,7 @@ class BudgetSystem {
         const selectedMonth = parseInt(document.getElementById('monthSelect').value);
         this.updateBalanceSummary(selectedMonth);
         this.updateCategorySummary(selectedMonth);
+        this.updateActualExpensesSummary(selectedMonth);
         this.updateMonthlyTransactions(selectedMonth);
         this.updateCheckPaymentsSummary(selectedMonth);
     }
@@ -1309,6 +1356,86 @@ class BudgetSystem {
         }
     }
 
+    // Update actual expenses summary (excluding checks and income)
+    updateActualExpensesSummary(month) {
+        const container = document.getElementById('actualExpensesSummary');
+        const monthName = this.getMonthName(month);
+
+        // Update the title with the month name
+        document.getElementById('actualExpensesTitle').textContent = `💰 הוצאות ${monthName}`;
+
+        // Filter transactions - handle both old data (without year) and new data (with year)
+        const monthlyTransactions = this.transactions.filter(t => {
+            const transactionYear = t.year || this.currentYear;
+            return t.month === month && transactionYear === this.currentYear;
+        });
+
+        // Filter using the new includeInMonthlyExpenses property
+        // Exclude check payments
+        const actualExpenses = monthlyTransactions.filter(t => {
+            // Exclude check payments
+            if (t.paymentMethod === 'check') {
+                return false;
+            }
+            // Include only if item is marked for monthly expenses
+            return this.shouldIncludeInMonthlyExpenses(t.item);
+        });
+
+        // Group by item name for display
+        const itemTotals = {};
+        actualExpenses.forEach(transaction => {
+            const item = transaction.item || 'לא מזוהה';
+            itemTotals[item] = (itemTotals[item] || 0) + Math.abs(transaction.amount);
+        });
+
+        // Sort items by amount (descending)
+        const sortedItems = Object.entries(itemTotals)
+            .sort((a, b) => b[1] - a[1]);
+
+        // Calculate total
+        const totalExpenses = actualExpenses.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+
+        container.innerHTML = '';
+
+        // Add table
+        const table = document.createElement('table');
+        table.className = 'expenses-table';
+        table.innerHTML = `
+            <thead>
+                <tr>
+                    <th>פריט</th>
+                    <th>סכום</th>
+                    <th>אחוז</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${sortedItems.map(([item, amount]) => {
+                    const percentage = totalExpenses > 0 ? ((amount / totalExpenses) * 100).toFixed(1) : 0;
+                    return `
+                        <tr>
+                            <td>${item}</td>
+                            <td class="amount-cell">₪${amount.toFixed(2)}</td>
+                            <td class="percentage-cell">${percentage}%</td>
+                        </tr>
+                    `;
+                }).join('')}
+            </tbody>
+            <tfoot>
+                <tr class="total-row">
+                    <td><strong>סה"כ הוצאות בפועל:</strong></td>
+                    <td class="amount-cell"><strong>₪${totalExpenses.toFixed(2)}</strong></td>
+                    <td class="percentage-cell"><strong>100%</strong></td>
+                </tr>
+            </tfoot>
+        `;
+
+        container.appendChild(table);
+
+        if (sortedItems.length === 0) {
+            container.innerHTML = '<p style="text-align: center; color: #666;">אין הוצאות בפועל לחודש זה</p>';
+        }
+    }
+
     updateMonthlyTransactions(month) {
         const container = document.getElementById('monthlyTransactions');
         // Filter transactions - handle both old data (without year) and new data (with year)
@@ -1496,7 +1623,30 @@ class BudgetSystem {
                 }
                 
                 if (data.mappings) {
-                    this.mappings = new Map(data.mappings);
+                    this.mappings = new Map();
+                    // Convert old format to new format if needed
+                    data.mappings.forEach(([item, value]) => {
+                        if (typeof value === 'string') {
+                            // Old format: convert to new object format
+                            this.mappings.set(item, {
+                                category: value,
+                                includeInMonthlyExpenses: true // Default to true for old mappings
+                            });
+                            dataUpdated = true;
+                        } else if (value && typeof value === 'object') {
+                            // New format: use as is, but ensure includeInMonthlyExpenses exists
+                            this.mappings.set(item, {
+                                category: value.category || 'לא מקוטלג',
+                                includeInMonthlyExpenses: value.includeInMonthlyExpenses !== false
+                            });
+                        } else {
+                            // Fallback
+                            this.mappings.set(item, {
+                                category: 'לא מקוטלג',
+                                includeInMonthlyExpenses: true
+                            });
+                        }
+                    });
                 }
                 if (data.incomeItems) {
                     this.incomeItems = new Set(data.incomeItems);
