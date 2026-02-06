@@ -69,8 +69,16 @@ class BudgetSystem {
     initializeDefaultMappings() {
         // Define categories
         this.categories = [
-            'חינוך ותרבות', 'טיפול רפואי', 'כלכלה', 'מיסים', 
-            'נסיעות', 'ביגוד', 'משכורת', 'עמלת בנק', 'שונות'
+            'ביגוד',
+            'הוצאת ריכוז חודשית',
+            'חינוך ותרבות',
+            'טיפול רפואי',
+            'כלכלה',
+            'מיסים',
+            'משכורת',
+            'נסיעות',
+            'עמלת בנק',
+            'שונות'
         ];
 
         // Define income items
@@ -81,34 +89,45 @@ class BudgetSystem {
         ]);
 
         const defaultMappings = [
-            ['משכורת', 'משכורת'],
-            ['ביטוח לאומי', 'משכורת'],
-            ['מענק עבודה', 'משכורת'],
-            ['סופרסל', 'כלכלה'],
-            ['רמי לוי', 'כלכלה'],
-            ['מגא', 'כלכלה'],
-            ['ויקטורי', 'כלכלה'],
-            ['אושר עד', 'כלכלה'],
-            ['הראל', 'מיסים'],
-            ['מנורה', 'מיסים'],
-            ['פניקס', 'מיסים'],
-            ['כרטיסיה', 'נסיעות'],
-            ['מונית', 'נסיעות'],
-            ['גט', 'נסיעות'],
-            ['רב קו', 'נסיעות'],
-            ['עמלת בנק', 'עמלת בנק'],
-            ['רופא', 'טיפול רפואי'],
-            ['בית מרקחת', 'טיפול רפואי'],
-            ['רופא שיניים', 'טיפול רפואי'],
-            ['ביגוד', 'ביגוד'],
-            ['תספורת', 'ביגוד'],
-            ['ספר', 'חינוך ותרבות'],
-            ['קורס', 'חינוך ותרבות'],
-            ['קולנוע', 'חינוך ותרבות']
+            ['משכורת', 'משכורת', false],
+            ['ביטוח לאומי', 'משכורת', false],
+            ['מענק עבודה', 'משכורת', false],
+            ['סופרסל', 'כלכלה', true],
+            ['הראל בטוח', 'מיסים', false],
+            ['מנורה', 'מיסים', false],
+            ['פניקס', 'מיסים', false],
+            ['מכבי', 'מיסים', false],
+            ['כרטיסיה', 'נסיעות', true],
+            ['מונית', 'נסיעות', true],
+            ['רב קו', 'נסיעות', true],
+            ['עמלת בנק', 'עמלת בנק', false],
+            ['ע.מפעולות-ישיר', 'עמלת בנק', false],
+            ['רופא', 'טיפול רפואי', true],
+            ['בית מרקחת', 'טיפול רפואי', true],
+            ['רופא שיניים', 'טיפול רפואי', true],
+            ['ביגוד', 'ביגוד', true],
+            ['תספורת', 'ביגוד', true],
+            ['ספר', 'חינוך ותרבות', true],
+            ['קורס', 'חינוך ותרבות', true],
+            ['קולנוע', 'חינוך ותרבות', true],
+            ['מוזיאון', 'חינוך ותרבות', true],
+            ['טיול', 'חינוך ותרבות', true],
+            ['מתנ"ס', 'חינוך ותרבות', true],
+            ['פלאפון', 'מיסים', false],
+            ['מיסים', 'מיסים', false],
+            ['חשמל', 'מיסים', false],
+            ['סלקום', 'מיסים', false],
+            ['אינטרנט', 'מיסים', false],
+            ['מי רמת גן', 'מיסים', false],
+            ['תמי 4', 'מיסים', false],
+            ['סופר גז', 'מיסים', false]
         ];
 
-        defaultMappings.forEach(([item, category]) => {
-            this.mappings.set(item, category);
+        defaultMappings.forEach(([item, category, includeInMonthlyExpenses]) => {
+            this.mappings.set(item, {
+                category: category,
+                includeInMonthlyExpenses: includeInMonthlyExpenses
+            });
         });
     }
 
@@ -637,7 +656,7 @@ class BudgetSystem {
                 document.body.appendChild(modal);
                 
                 const categorySelect = document.getElementById('categorySelect');
-                
+
                 document.getElementById('confirmBtn').addEventListener('click', () => {
                     const selectedCategory = categorySelect.value;
                     document.body.removeChild(modal);

@@ -33,23 +33,7 @@
       "category": "כלכלה",
       "includeInMonthlyExpenses": true
     },
-    "רמי לוי": {
-      "category": "כלכלה",
-      "includeInMonthlyExpenses": true
-    },
-    "מגא": {
-      "category": "כלכלה",
-      "includeInMonthlyExpenses": true
-    },
-    "ויקטורי": {
-      "category": "כלכלה",
-      "includeInMonthlyExpenses": true
-    },
-    "אושר עד": {
-      "category": "כלכלה",
-      "includeInMonthlyExpenses": true
-    },
-    "הראל": {
+    "הראל בטוח": {
       "category": "מיסים",
       "includeInMonthlyExpenses": false
     },
@@ -69,10 +53,6 @@
       "category": "נסיעות",
       "includeInMonthlyExpenses": true
     },
-    "גט": {
-      "category": "נסיעות",
-      "includeInMonthlyExpenses": true
-    },
     "רב קו": {
       "category": "נסיעות",
       "includeInMonthlyExpenses": true
@@ -81,7 +61,7 @@
       "category": "עמלת בנק",
       "includeInMonthlyExpenses": false
     },
-    "ע מפעולות ישיר": {
+    "ע.מפעולות-ישיר": {
       "category": "עמלת בנק",
       "includeInMonthlyExpenses": false
     },
@@ -124,6 +104,46 @@
     "מוזיאון": {
       "category": "חינוך ותרבות",
       "includeInMonthlyExpenses": true
+    },
+    "טיול": {
+      "category": "חינוך ותרבות",
+      "includeInMonthlyExpenses": true
+    },
+    "מתנ\"ס": {
+      "category": "חינוך ותרבות",
+      "includeInMonthlyExpenses": true
+    },
+    "פלאפון": {
+      "category": "מיסים",
+      "includeInMonthlyExpenses": false
+    },
+    "מיסים": {
+      "category": "מיסים",
+      "includeInMonthlyExpenses": false
+    },
+    "חשמל": {
+      "category": "מיסים",
+      "includeInMonthlyExpenses": false
+    },
+    "סלקום": {
+      "category": "מיסים",
+      "includeInMonthlyExpenses": false
+    },
+    "אינטרנט": {
+      "category": "מיסים",
+      "includeInMonthlyExpenses": false
+    },
+    "מי רמת גן": {
+      "category": "מיסים",
+      "includeInMonthlyExpenses": false
+    },
+    "תמי 4": {
+      "category": "מיסים",
+      "includeInMonthlyExpenses": false
+    },
+    "סופר גז": {
+      "category": "מיסים",
+      "includeInMonthlyExpenses": false
     }
   }
 }
