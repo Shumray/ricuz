@@ -17,8 +17,8 @@ class BudgetSystem {
     }
 
     // Initialize the system
-    async initialize() {
-        await this.initializeFromMappingsFile();
+    initialize() {
+        this.initializeDefaultMappings();
         this.loadData();
         this.initializeYearSelector();
         this.initializeEventListeners();
@@ -26,50 +26,12 @@ class BudgetSystem {
         this.updateDisplay();
     }
 
-    // Initialize from mappings.json file
-    async initializeFromMappingsFile() {
-        try {
-            const response = await fetch('./mappings.json');
-            const mappingsData = await response.json();
-            
-            // Load categories
-            this.categories = mappingsData.categories || [];
-            
-            // Load income items
-            this.incomeItems = new Set(mappingsData.incomeItems || []);
-            
-            // Load mappings - support both old (string) and new (object) format
-            this.mappings = new Map();
-            if (mappingsData.mappings) {
-                Object.entries(mappingsData.mappings).forEach(([item, value]) => {
-                    if (typeof value === 'string') {
-                        // Old format: "item": "category"
-                        this.mappings.set(item, {
-                            category: value,
-                            includeInMonthlyExpenses: false
-                        });
-                    } else {
-                        // New format: "item": { category: "...", includeInMonthlyExpenses: true/false }
-                        this.mappings.set(item, {
-                            category: value.category,
-                            includeInMonthlyExpenses: value.includeInMonthlyExpenses !== false
-                        });
-                    }
-                });
-            }
-            
-            console.log('Mappings loaded successfully from mappings.json');
-        } catch (error) {
-            console.error('Error loading mappings file, using fallback:', error);
-            this.initializeDefaultMappings(); // Fallback to hardcoded mappings
-        }
-    }
-
     // Initialize default category mappings (fallback)
     initializeDefaultMappings() {
         // Define categories
         this.categories = [
             'ביגוד',
+            'ביטוח לאומי',
             'הוצאת ריכוז חודשית',
             'חינוך ותרבות',
             'טיפול רפואי',
@@ -84,13 +46,19 @@ class BudgetSystem {
         // Define income items
         this.incomeItems = new Set([
             'משכורת',
-            'ביטוח לאומי', 
+            'ביטוח לאומי',
+            'ביטוח לאומי ג"',
+            'ביטוח לאומי ג״',
+            'ביטוח לאומי ג',
             'מענק עבודה'
         ]);
 
         const defaultMappings = [
             ['משכורת', 'משכורת', false],
-            ['ביטוח לאומי', 'משכורת', false],
+            ['ביטוח לאומי', 'ביטוח לאומי', false],
+            ['ביטוח לאומי ג"', 'ביטוח לאומי', false],
+            ['ביטוח לאומי ג״', 'ביטוח לאומי', false],
+            ['ביטוח לאומי ג', 'ביטוח לאומי', false],
             ['מענק עבודה', 'משכורת', false],
             ['סופרסל', 'כלכלה', true],
             ['הראל בטוח', 'מיסים', false],
@@ -120,7 +88,9 @@ class BudgetSystem {
             ['אינטרנט', 'מיסים', false],
             ['מי רמת גן', 'מיסים', false],
             ['תמי 4', 'מיסים', false],
-            ['סופר גז', 'מיסים', false]
+            ['סופר גז', 'מיסים', false],
+            ['ארנונה', 'מיסים', false],
+            ['עיריה', 'מיסים', false]
         ];
 
         defaultMappings.forEach(([item, category, includeInMonthlyExpenses]) => {
@@ -241,6 +211,19 @@ class BudgetSystem {
             this.exportMonthlyReport(selectedMonth);
         });
 
+        // Import CSV handler
+        document.getElementById('importCsvBtn').addEventListener('click', () => {
+            document.getElementById('importCsvFile').click();
+        });
+
+        document.getElementById('importCsvFile').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                this.importCSV(file);
+                e.target.value = ''; // Reset file input
+            }
+        });
+
         // Export/Import
         document.getElementById('exportBtn').addEventListener('click', () => {
             this.exportData();
@@ -300,9 +283,14 @@ class BudgetSystem {
             // Handle check data
             const isCheck = editData.paymentMethod === 'check';
             document.getElementById('isCheck').checked = isCheck;
-            if (isCheck && editData.checkDetails) {
+            
+            // Store check details
+            if (editData.checkDetails) {
                 this.currentCheckData = editData.checkDetails;
             }
+            
+            // Show/hide check info
+            this.updateCheckInfoDisplay();
             
             // Change form title and button text
             document.querySelector('#transactionForm h3').textContent = 'עריכת עסקה';
@@ -315,6 +303,8 @@ class BudgetSystem {
             // New transaction mode
             document.getElementById('isCheck').checked = false;
             delete this.currentCheckData;
+            this.updateCheckInfoDisplay();
+            
             document.querySelector('#transactionForm h3').textContent = 'עסקה חדשה';
             document.querySelector('#newTransactionForm button[type="submit"]').innerHTML = '💾 שמור';
             delete document.getElementById('newTransactionForm').dataset.editId;
@@ -393,12 +383,18 @@ class BudgetSystem {
             const transactionIndex = this.transactions.findIndex(t => t.id === editId);
             
             if (transactionIndex !== -1) {
+                // Keep the original ID and update all other fields
                 this.transactions[transactionIndex] = {
-                    ...this.transactions[transactionIndex],
+                    id: editId, // Preserve original ID
                     ...transactionData
                 };
                 
+                console.log('Transaction updated:', this.transactions[transactionIndex]);
                 this.showNotification('העסקה עודכנה בהצלחה!', 'success');
+            } else {
+                console.error('Transaction not found for edit:', editId);
+                alert('שגיאה: העסקה לא נמצאה');
+                return;
             }
         } else {
             // Create new transaction
@@ -418,15 +414,23 @@ class BudgetSystem {
     }
 
     getCategoryForItem(item) {
+        // Normalize item name - remove quote characters
+        const normalizedItem = item.trim().replace(/["״]/g, '');
+        
+        // Special handling for "ביטוח לאומי" variants
+        if (normalizedItem === 'ביטוח לאומי' || normalizedItem === 'ביטוח לאומי ג' || normalizedItem.startsWith('ביטוח לאומי ג')) {
+            return 'ביטוח לאומי';
+        }
+        
         // Try exact match first
-        if (this.mappings.has(item)) {
-            const mapping = this.mappings.get(item);
+        if (this.mappings.has(normalizedItem)) {
+            const mapping = this.mappings.get(normalizedItem);
             return mapping.category || 'לא מקוטלג';
         }
 
         // Try partial match
         for (const [mappedItem, mapping] of this.mappings) {
-            if (item.includes(mappedItem) || mappedItem.includes(item)) {
+            if (normalizedItem.includes(mappedItem) || mappedItem.includes(normalizedItem)) {
                 return mapping.category || 'לא מקוטלג';
             }
         }
@@ -783,14 +787,73 @@ class BudgetSystem {
     setupCheckPayment() {
         const checkBox = document.getElementById('isCheck');
         
-        checkBox.addEventListener('change', (e) => {
+        checkBox.addEventListener('change', async (e) => {
             if (e.target.checked) {
-                this.showCheckDetailsModal();
+                // If editing and check data exists, show it; otherwise show empty modal
+                const existingData = this.currentCheckData || null;
+                await this.showCheckDetailsModal(existingData);
+                this.updateCheckInfoDisplay();
             } else {
                 // Clear check data if unchecked
                 delete this.currentCheckData;
+                this.updateCheckInfoDisplay();
             }
         });
+    }
+    
+    // Update check info display in the form
+    updateCheckInfoDisplay() {
+        // Find or create the check info display element
+        let checkInfoDiv = document.getElementById('checkInfoDisplay');
+        const paymentMethodSection = document.querySelector('.payment-method-section');
+        
+        if (!checkInfoDiv && paymentMethodSection) {
+            checkInfoDiv = document.createElement('div');
+            checkInfoDiv.id = 'checkInfoDisplay';
+            checkInfoDiv.style.marginTop = '10px';
+            paymentMethodSection.appendChild(checkInfoDiv);
+        }
+        
+        if (!checkInfoDiv) return;
+        
+        const isCheck = document.getElementById('isCheck')?.checked;
+        
+        if (isCheck && this.currentCheckData) {
+            // Clean up N/A values
+            const checkNum = this.currentCheckData.checkNumber && this.currentCheckData.checkNumber !== 'N/A'
+                ? this.currentCheckData.checkNumber
+                : '(לא הוזן)';
+            const payee = this.currentCheckData.payeeName && this.currentCheckData.payeeName !== 'לא צוין'
+                ? this.currentCheckData.payeeName
+                : '(לא הוזן)';
+            
+            // Show check details with edit button
+            checkInfoDiv.innerHTML = `
+                <div style="background: #e3f2fd; padding: 12px; border-radius: 8px; border-right: 4px solid #2196f3;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <div style="font-weight: 500; margin-bottom: 5px;">📋 פרטי הצ'יק:</div>
+                            <div style="font-size: 0.9rem; color: #555;">
+                                מס' צ'יק: <strong>${checkNum}</strong><br>
+                                מוטב: <strong>${payee}</strong>
+                            </div>
+                        </div>
+                        <button type="button" id="editCheckDetailsBtn" class="btn btn-secondary btn-small" style="min-width: 80px;">✏️ ערוך</button>
+                    </div>
+                </div>
+            `;
+            
+            // Add click event to edit button
+            const editBtn = document.getElementById('editCheckDetailsBtn');
+            if (editBtn) {
+                editBtn.addEventListener('click', async () => {
+                    await this.showCheckDetailsModal(this.currentCheckData);
+                    this.updateCheckInfoDisplay();
+                });
+            }
+        } else {
+            checkInfoDiv.innerHTML = '';
+        }
     }
 
     // Show check details modal
@@ -799,8 +862,9 @@ class BudgetSystem {
             const modal = document.createElement('div');
             modal.className = 'check-modal';
             
-            const checkNumber = existingData?.checkNumber || '';
-            const payeeName = existingData?.payeeName || '';
+            // Clean up N/A values from old data
+            const checkNumber = (existingData?.checkNumber && existingData.checkNumber !== 'N/A') ? existingData.checkNumber : '';
+            const payeeName = (existingData?.payeeName && existingData.payeeName !== 'לא צוין') ? existingData.payeeName : '';
             
             modal.innerHTML = `
                 <div class="check-modal-content">
@@ -914,7 +978,13 @@ class BudgetSystem {
             // Create check info cell
             let checkInfo = '';
             if (transaction.paymentMethod === 'check' && transaction.checkDetails) {
-                checkInfo = `<span class="check-badge" title="צ'יק #${transaction.checkDetails.checkNumber} למוטב: ${transaction.checkDetails.payeeName}">צ'יק #${transaction.checkDetails.checkNumber}</span>`;
+                const checkNum = transaction.checkDetails.checkNumber && transaction.checkDetails.checkNumber !== 'N/A' 
+                    ? transaction.checkDetails.checkNumber 
+                    : '(לא הוזן)';
+                const payee = transaction.checkDetails.payeeName && transaction.checkDetails.payeeName !== 'לא צוין'
+                    ? transaction.checkDetails.payeeName
+                    : '(לא הוזן)';
+                checkInfo = `<span class="check-badge" title="צ'יק #${checkNum} למוטב: ${payee}">צ'יק #${checkNum}</span>`;
             }
             
             row.innerHTML = `
@@ -1607,12 +1677,15 @@ class BudgetSystem {
     }
 
     getMonthName(monthNumber) {
+        // Ensure monthNumber is an integer (handle both string and number)
+        const month = parseInt(monthNumber);
+        
         const months = {
             1: 'ינואר', 2: 'פברואר', 3: 'מרץ', 4: 'אפריל',
             5: 'מאי', 6: 'יוני', 7: 'יולי', 8: 'אוגוסט',
             9: 'ספטמבר', 10: 'אוקטובר', 11: 'נובמבר', 12: 'דצמבר'
         };
-        return months[monthNumber] || monthNumber.toString();
+        return months[month] || monthNumber.toString();
     }
 
     // Data persistence
@@ -1660,17 +1733,44 @@ class BudgetSystem {
 
                 this.transactions = data.transactions || [];
                 
-                // Update old transactions without year to use current year
+                // Update old transactions - fix data types and add missing fields
                 let dataUpdated = false;
                 this.transactions.forEach(transaction => {
+                    // Fix 1: Add year if missing
                     if (!transaction.year) {
                         transaction.year = this.currentYear;
                         dataUpdated = true;
                     }
+                    
+                    // Fix 2: Convert month from STRING to INTEGER if needed
+                    if (typeof transaction.month === 'string') {
+                        transaction.month = parseInt(transaction.month);
+                        dataUpdated = true;
+                        console.log(`Fixed month type for transaction: ${transaction.item} - month changed from string to ${transaction.month}`);
+                    }
+                    
+                    // Fix 3: Update categories for items that now have proper mappings
+                    // Also remove quote characters from item names
+                    const itemName = transaction.item.trim();
+                    const itemNameClean = itemName.replace(/["״]/g, '');
+                    
+                    // Remove quotes from item if present
+                    if (itemName !== itemNameClean) {
+                        transaction.item = itemNameClean;
+                        dataUpdated = true;
+                    }
+                    
+                    // Fix category for ביטוח לאומי variants - ALWAYS update
+                    if (itemNameClean === 'ביטוח לאומי' || itemNameClean === 'ביטוח לאומי ג' || itemNameClean.startsWith('ביטוח לאומי ג')) {
+                        if (transaction.category !== 'ביטוח לאומי') {
+                            transaction.category = 'ביטוח לאומי';
+                            dataUpdated = true;
+                        }
+                    }
                 });
                 
                 if (dataUpdated) {
-                    console.log('Updated old transactions with current year');
+                    console.log('✅ Updated old transactions (year, month type, and category fixes)');
                     // Save the updated data back to localStorage
                     setTimeout(() => this.saveData(), 100);
                 }
@@ -1700,12 +1800,126 @@ class BudgetSystem {
                             });
                         }
                     });
+                    
+                    // Merge new default mappings that don't exist yet
+                    const defaultMappings = [
+                        ['משכורת', 'משכורת', false],
+                        ['ביטוח לאומי', 'ביטוח לאומי', false],
+                        ['ביטוח לאומי ג"', 'ביטוח לאומי', false],
+                        ['ביטוח לאומי ג״', 'ביטוח לאומי', false],
+                        ['ביטוח לאומי ג', 'ביטוח לאומי', false],
+                        ['מענק עבודה', 'משכורת', false],
+                        ['סופרסל', 'כלכלה', true],
+                        ['הראל בטוח', 'מיסים', false],
+                        ['מנורה', 'מיסים', false],
+                        ['פניקס', 'מיסים', false],
+                        ['מכבי', 'מיסים', false],
+                        ['כרטיסיה', 'נסיעות', true],
+                        ['מונית', 'נסיעות', true],
+                        ['רב קו', 'נסיעות', true],
+                        ['עמלת בנק', 'עמלת בנק', false],
+                        ['ע.מפעולות-ישיר', 'עמלת בנק', false],
+                        ['רופא', 'טיפול רפואי', true],
+                        ['בית מרקחת', 'טיפול רפואי', true],
+                        ['רופא שיניים', 'טיפול רפואי', true],
+                        ['ביגוד', 'ביגוד', true],
+                        ['תספורת', 'ביגוד', true],
+                        ['ספר', 'חינוך ותרבות', true],
+                        ['קורס', 'חינוך ותרבות', true],
+                        ['קולנוע', 'חינוך ותרבות', true],
+                        ['מוזיאון', 'חינוך ותרבות', true],
+                        ['טיול', 'חינוך ותרבות', true],
+                        ['מתנ"ס', 'חינוך ותרבות', true],
+                        ['פלאפון', 'מיסים', false],
+                        ['מיסים', 'מיסים', false],
+                        ['חשמל', 'מיסים', false],
+                        ['סלקום', 'מיסים', false],
+                        ['אינטרנט', 'מיסים', false],
+                        ['מי רמת גן', 'מיסים', false],
+                        ['תמי 4', 'מיסים', false],
+                        ['סופר גז', 'מיסים', false],
+                        ['ארנונה', 'מיסים', false],
+                        ['עיריה', 'מיסים', false]
+                    ];
+                    
+                    // Add new mappings that don't exist
+                    defaultMappings.forEach(([item, category, includeInMonthlyExpenses]) => {
+                        if (!this.mappings.has(item)) {
+                            this.mappings.set(item, {
+                                category: category,
+                                includeInMonthlyExpenses: includeInMonthlyExpenses
+                            });
+                            dataUpdated = true;
+                            console.log(`Added new mapping: ${item} → ${category}`);
+                        }
+                    });
+                } else {
+                    // No saved mappings, initialize from defaults
+                    this.initializeDefaultMappings();
                 }
                 if (data.incomeItems) {
                     this.incomeItems = new Set(data.incomeItems);
+                    // Make sure all default income items exist
+                    const defaultIncomeItems = [
+                        'משכורת',
+                        'ביטוח לאומי',
+                        'ביטוח לאומי ג"',
+                        'ביטוח לאומי ג״',
+                        'ביטוח לאומי ג',
+                        'מענק עבודה'
+                    ];
+                    defaultIncomeItems.forEach(item => {
+                        if (!this.incomeItems.has(item)) {
+                            this.incomeItems.add(item);
+                            dataUpdated = true;
+                        }
+                    });
+                } else {
+                    this.incomeItems = new Set([
+                        'משכורת',
+                        'ביטוח לאומי',
+                        'ביטוח לאומי ג"',
+                        'ביטוח לאומי ג״',
+                        'ביטוח לאומי ג',
+                        'מענק עבודה'
+                    ]);
                 }
                 if (data.categories) {
                     this.categories = data.categories;
+                    // Make sure all default categories exist
+                    const defaultCategories = [
+                        'ביגוד',
+                        'ביטוח לאומי',
+                        'הוצאת ריכוז חודשית',
+                        'חינוך ותרבות',
+                        'טיפול רפואי',
+                        'כלכלה',
+                        'מיסים',
+                        'משכורת',
+                        'נסיעות',
+                        'עמלת בנק',
+                        'שונות'
+                    ];
+                    defaultCategories.forEach(cat => {
+                        if (!this.categories.includes(cat)) {
+                            this.categories.push(cat);
+                            dataUpdated = true;
+                        }
+                    });
+                } else {
+                    this.categories = [
+                        'ביגוד',
+                        'ביטוח לאומי',
+                        'הוצאת ריכוז חודשית',
+                        'חינוך ותרבות',
+                        'טיפול רפואי',
+                        'כלכלה',
+                        'מיסים',
+                        'משכורת',
+                        'נסיעות',
+                        'עמלת בנק',
+                        'שונות'
+                    ];
                 }
                 if (data.openingBalances) {
                     this.openingBalances = new Map(data.openingBalances);
@@ -1715,6 +1929,12 @@ class BudgetSystem {
                 }
 
                 console.log(`Loaded ${this.transactions.length} transactions for year ${this.currentYear}`);
+                
+                // Save if data was updated with new defaults
+                if (dataUpdated) {
+                    console.log('✅ Added new default mappings/categories');
+                    setTimeout(() => this.saveData(), 100);
+                }
             } catch (error) {
                 console.error('Error loading saved data:', error);
             }
@@ -1768,6 +1988,281 @@ class BudgetSystem {
         document.body.removeChild(link);
         
         this.showNotification('קובץ המיפויים יוצא בהצלחה!', 'success');
+    }
+
+    // Check if a transaction is a duplicate
+    isDuplicateTransaction(newTransaction) {
+        return this.transactions.some(existing => {
+            return existing.item === newTransaction.item &&
+                   existing.month === newTransaction.month &&
+                   existing.year === newTransaction.year &&
+                   existing.type === newTransaction.type &&
+                   Math.abs(existing.amount - newTransaction.amount) < 0.01; // Allow for floating point precision
+        });
+    }
+
+    // Import CSV file
+    importCSV(file) {
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const csvContent = e.target.result;
+                const result = this.parseAndValidateCSV(csvContent);
+                
+                if (!result.success) {
+                    alert('שגיאה בטעינת הקובץ:\n' + result.error);
+                    return;
+                }
+
+                // Add transactions
+                let addedCount = 0;
+                let skippedCount = 0;
+                const importedMonth = result.transactions.length > 0 ? result.transactions[0].month : null;
+                
+                result.transactions.forEach(trans => {
+                    // Check for duplicates before adding
+                    if (this.isDuplicateTransaction(trans)) {
+                        skippedCount++;
+                        console.log(`Skipping duplicate transaction: ${trans.item} - ${trans.amount}`);
+                    } else {
+                        this.transactions.push(trans);
+                        addedCount++;
+                    }
+                });
+
+                this.saveData();
+                
+                // Show detailed notification
+                let message = `✅ ${addedCount} עסקאות נוספו בהצלחה`;
+                if (skippedCount > 0) {
+                    message += `\n⚠️ ${skippedCount} עסקאות כפולות דולגו`;
+                }
+                this.showNotification(message, addedCount > 0 ? 'success' : 'info');
+                
+                // Update displays (wrapped separately to avoid blocking success message)
+                try {
+                    this.updateDisplay();
+                    
+                    // Update dashboard month selector to match imported month
+                    if (importedMonth) {
+                        const dashboardMonthSelect = document.getElementById('dashboardMonth');
+                        if (dashboardMonthSelect) {
+                            dashboardMonthSelect.value = importedMonth.toString().padStart(2, '0');
+                        }
+                    }
+                    
+                    // Force update dashboard even if not currently active tab
+                    this.updateDashboard();
+                } catch (displayError) {
+                    console.error('Error updating displays:', displayError);
+                    // Don't show error to user since data was imported successfully
+                }
+            } catch (error) {
+                console.error('Error importing CSV:', error);
+                alert('שגיאה בקריאת הקובץ:\n' + error.message + '\n\nאנא ודא שהקובץ הוא CSV תקין.');
+            }
+        };
+        reader.readAsText(file, 'UTF-8');
+    }
+
+    // Parse and validate CSV content
+    parseAndValidateCSV(csvContent) {
+        // Get currently selected month and year
+        const selectedMonthElement = document.getElementById('dataEntryMonthSelect');
+        const selectedMonth = selectedMonthElement.value;
+        
+        if (selectedMonth === 'all') {
+            return {
+                success: false,
+                error: 'יש לבחור חודש מסוים לפני ייבוא קובץ CSV.\nאנא בחר חודש מהתפריט הנפתח ונסה שוב.'
+            };
+        }
+
+        // Parse CSV
+        const lines = csvContent.split('\n').filter(line => line.trim());
+        if (lines.length < 2) {
+            return {
+                success: false,
+                error: 'הקובץ ריק או לא מכיל נתונים.'
+            };
+        }
+
+        // Parse header
+        const header = lines[0].split(',').map(h => h.trim());
+        const expectedHeaders = ['שנה', 'חודש', 'פריט', 'חובה', 'זכות'];
+        
+        // Validate header
+        const hasCorrectHeaders = expectedHeaders.every((h, i) => 
+            header[i] && header[i].replace(/"/g, '') === h
+        );
+        
+        if (!hasCorrectHeaders) {
+            return {
+                success: false,
+                error: 'כותרות הקובץ אינן תקינות.\nצפוי: שנה,חודש,פריט,חובה,זכות'
+            };
+        }
+
+        // Map Hebrew month names to numbers
+        const monthMap = {
+            'ינואר': '01', 'פברואר': '02', 'מרץ': '03', 'אפריל': '04',
+            'מאי': '05', 'יוני': '06', 'יולי': '07', 'אוגוסט': '08',
+            'ספטמבר': '09', 'אוקטובר': '10', 'נובמבר': '11', 'דצמבר': '12'
+        };
+
+        const transactions = [];
+        const months = new Set();
+        const years = new Set();
+
+        // Parse data rows
+        for (let i = 1; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if (!line) continue;
+
+            // Parse CSV line (handle quotes)
+            const values = this.parseCSVLine(line);
+            
+            if (values.length < 5) continue;
+
+            const year = values[0].trim();
+            const monthName = values[1].trim();
+            // Remove " character from item name
+            const item = values[2].trim().replace(/"/g, '');
+            const debit = values[3].trim(); // חובה (הוצאה)
+            const credit = values[4].trim(); // זכות (הכנסה)
+
+            // Convert month name to number
+            const month = monthMap[monthName];
+            if (!month) {
+                return {
+                    success: false,
+                    error: `שם חודש לא תקין בשורה ${i + 1}: "${monthName}"\nצפוי: ינואר, פברואר, וכו'.`
+                };
+            }
+
+            months.add(month);
+            years.add(year);
+
+            // Determine type and amount
+            let amount, type;
+            if (credit && credit !== '') {
+                // זכות = הכנסה
+                amount = parseFloat(credit);
+                type = 'income';
+            } else if (debit && debit !== '') {
+                // חובה = הוצאה
+                amount = -Math.abs(parseFloat(debit));
+                type = 'expense';
+            } else {
+                continue; // Skip if both empty
+            }
+
+            if (isNaN(amount)) {
+                return {
+                    success: false,
+                    error: `סכום לא תקין בשורה ${i + 1}: "${debit || credit}"`
+                };
+            }
+
+            // Determine category
+            let category;
+            let isCheckPayment = item.toLowerCase().includes('שיק');
+            if (isCheckPayment) {
+                category = 'שונות';
+            } else {
+                // Use getCategoryForItem to handle special cases and normalization
+                category = this.getCategoryForItem(item);
+            }
+
+            transactions.push({
+                id: Date.now() + Math.random(),
+                item: item,
+                amount: amount,
+                type: type,
+                category: category,
+                month: parseInt(month),
+                year: parseInt(year),
+                note: '',
+                paymentMethod: isCheckPayment ? 'check' : 'cash',
+                checkDetails: isCheckPayment ? { checkNumber: '', payeeName: '' } : null
+            });
+
+            // Small delay to ensure unique IDs
+            const now = Date.now();
+            while (Date.now() === now) { /* wait */ }
+        }
+
+        // Validation: Check if all months match selected month
+        if (months.size > 1) {
+            return {
+                success: false,
+                error: `הקובץ מכיל עסקאות ממספר חודשים: ${Array.from(months).map(m => this.getMonthName(parseInt(m))).join(', ')}\nכל העסקאות בקובץ חייבות להיות מאותו חודש.`
+            };
+        }
+
+        const csvMonth = Array.from(months)[0];
+        if (csvMonth !== selectedMonth) {
+            return {
+                success: false,
+                error: `אי-התאמה בין החודש הנבחר לחודש בקובץ!\n\nחודש נבחר באתר: ${this.getMonthName(parseInt(selectedMonth))}\nחודש בקובץ CSV: ${this.getMonthName(parseInt(csvMonth))}\n\nאנא בחר את החודש "${this.getMonthName(parseInt(csvMonth))}" ונסה שוב.`
+            };
+        }
+
+        // Validation: Check if year matches
+        if (years.size > 1) {
+            return {
+                success: false,
+                error: `הקובץ מכיל עסקאות ממספר שנים: ${Array.from(years).join(', ')}\nכל העסקאות בקובץ חייבות להיות מאותה שנה.`
+            };
+        }
+
+        const csvYear = Array.from(years)[0];
+        if (parseInt(csvYear) !== this.currentYear) {
+            return {
+                success: false,
+                error: `אי-התאמה בין השנה הנבחרת לשנה בקובץ!\n\nשנה נבחרת באתר: ${this.currentYear}\nשנה בקובץ CSV: ${csvYear}\n\nאנא בחר את השנה ${csvYear} ונסה שוב, או ערוך את הקובץ.`
+            };
+        }
+
+        return {
+            success: true,
+            transactions: transactions
+        };
+    }
+
+    // Parse CSV line handling quotes
+    parseCSVLine(line) {
+        const values = [];
+        let current = '';
+        let inQuotes = false;
+
+        for (let i = 0; i < line.length; i++) {
+            const char = line[i];
+            
+            if (char === '"') {
+                if (inQuotes && line[i + 1] === '"') {
+                    // Double quote - add single quote
+                    current += '"';
+                    i++;
+                } else {
+                    // Toggle quote mode
+                    inQuotes = !inQuotes;
+                }
+            } else if (char === ',' && !inQuotes) {
+                // End of field
+                values.push(current);
+                current = '';
+            } else {
+                current += char;
+            }
+        }
+        
+        // Add last field
+        values.push(current);
+        
+        return values;
     }
 
     importData(file) {
@@ -2184,12 +2679,19 @@ class BudgetSystem {
         container.innerHTML = '';
         
         checkPayments.forEach(transaction => {
+            const checkNum = transaction.checkDetails.checkNumber && transaction.checkDetails.checkNumber !== 'N/A'
+                ? transaction.checkDetails.checkNumber
+                : '(לא הוזן)';
+            const payee = transaction.checkDetails.payeeName && transaction.checkDetails.payeeName !== 'לא צוין'
+                ? transaction.checkDetails.payeeName
+                : '(לא הוזן)';
+            
             const item = document.createElement('div');
             item.className = 'check-payment-item';
             item.innerHTML = `
                 <div class="check-payment-details">
-                    <div class="check-payment-number">צ'יק מספר: ${transaction.checkDetails.checkNumber}</div>
-                    <div class="check-payment-payee">מוטב: ${transaction.checkDetails.payeeName}</div>
+                    <div class="check-payment-number">צ'יק מספר: ${checkNum}</div>
+                    <div class="check-payment-payee">מוטב: ${payee}</div>
                     <div style="margin-top: 5px;">
                         <strong>עבור:</strong> ${transaction.item}
                         ${transaction.note ? `<div class="check-payment-note">הערה: ${transaction.note}</div>` : ''}
@@ -2252,12 +2754,18 @@ class BudgetSystem {
             z-index: 10000;
             animation: slideInRight 0.3s ease;
             font-weight: 500;
+            white-space: pre-wrap;
+            max-width: 400px;
+            line-height: 1.5;
         `;
         notification.textContent = message;
         
         document.body.appendChild(notification);
         
-        // Remove notification after 3 seconds
+        // Calculate display time based on message length (longer messages need more time)
+        const displayTime = message.includes('\n') ? 5000 : 3000; // 5 seconds for multi-line, 3 for single
+        
+        // Remove notification after display time
         setTimeout(() => {
             notification.style.animation = 'slideOutRight 0.3s ease';
             setTimeout(() => {
@@ -2265,30 +2773,65 @@ class BudgetSystem {
                     notification.parentNode.removeChild(notification);
                 }
             }, 300);
-        }, 3000);
+        }, displayTime);
     }
 
     updateAnnualSummaryTable() {
         const container = document.getElementById('annualSummaryTable');
+        if (!container) {
+            console.error('Annual summary table container not found');
+            return;
+        }
         
-        // Define categories in specific order
-        const categories = [
-            'חינוך ותרבות',
-            'טיפול רפואי', 
-            'כלכלה',
-            'מיסים',
-            'נסיעות',
-            'ביגוד',
-            'משכורת + ביטוח לאומי',
-            'עמלת בנק',
-            'שונות'
-        ];
+        try {
+            // Add temporary message to show function is being called
+            container.innerHTML = '<p style="color: blue; padding: 20px; text-align: center;">טוען נתונים...</p>';
+            
+            // Filter by current year first
+            const currentYearTransactions = this.transactions.filter(t => {
+                const transactionYear = t.year || this.currentYear;
+                return transactionYear === this.currentYear;
+            });
+            
+            console.log(`Annual table: Processing ${currentYearTransactions.length} transactions for year ${this.currentYear}`);
+            
+// If no transactions, show message and stop
+        if (currentYearTransactions.length === 0) {
+            container.innerHTML = `
+                <div style="text-align: center; padding: 40px; background: #f5f5f5; border-radius: 8px; border: 2px dashed #ccc;">
+                    <h3 style="color: #666; margin: 0 0 10px 0;">📊 אין עסקאות לשנה ${this.currentYear}</h3>
+                    <p style="color: #999; margin: 0;">טען עסקאות או בחר שנה אחרת</p>
+                </div>
+            `;
+            console.log('No transactions for year', this.currentYear, '- stopping table generation');
+            return;
+        }
+        
+        // Collect all categories from actual data
+        const allCategories = new Set();
+        currentYearTransactions.forEach(transaction => {
+            let category = transaction.category || 'שונות';
+            // Handle special income category mapping
+            if (category === 'משכורת' || category === 'ביטוח לאומי' || category === 'מענק עבודה') {
+                category = 'משכורת + ביטוח לאומי';
+            }
+            allCategories.add(category);
+        });
+        
+        // Convert to sorted array - income category first, then alphabetically
+        const categories = Array.from(allCategories).sort((a, b) => {
+            if (a === 'משכורת + ביטוח לאומי') return -1;
+            if (b === 'משכורת + ביטוח לאומי') return 1;
+            return a.localeCompare(b, 'he');
+        });
+        
+        console.log('Categories found:', categories);
         
         // Process data for all 12 months
         const monthlyData = {};
         const categoryTotals = {};
         
-        // Initialize data structures
+        // Initialize data structures - MUST initialize totals to 0
         for (let month = 1; month <= 12; month++) {
             monthlyData[month] = {};
             categories.forEach(cat => {
@@ -2296,14 +2839,37 @@ class BudgetSystem {
             });
         }
         
+        // Initialize ALL category totals to 0
         categories.forEach(cat => {
             categoryTotals[cat] = 0;
         });
         
-        // Process transactions - include BOTH income and expenses
-        this.transactions.forEach(transaction => {
-            const month = transaction.month;
+        console.log('Categories after initialization:', categories);
+        console.log('Sample monthlyData for month 1:', monthlyData[1]);
+        
+        currentYearTransactions.forEach((transaction, idx) => {
+            // CRITICAL: Parse month as integer to match monthlyData initialization
+            const month = parseInt(transaction.month);
             let category = transaction.category || 'שונות';
+            
+            // Debug first few transactions
+            if (idx < 3) {
+                console.log(`Transaction ${idx}:`, { 
+                    item: transaction.item, 
+                    month, 
+                    monthType: typeof month,
+                    originalMonth: transaction.month,
+                    type: transaction.type, 
+                    amount: transaction.amount, 
+                    category 
+                });
+            }
+            
+            // Skip if month is invalid
+            if (!month || isNaN(month) || month < 1 || month > 12) {
+                console.warn('Invalid month for transaction:', transaction);
+                return;
+            }
             
             // Handle special income category mapping
             if (category === 'משכורת' || category === 'ביטוח לאומי' || category === 'מענק עבודה') {
@@ -2313,22 +2879,31 @@ class BudgetSystem {
             // For income transactions, use positive amount; for expenses, use absolute value
             const amount = transaction.type === 'income' ? transaction.amount : Math.abs(transaction.amount);
             
-            if (categories.includes(category)) {
-                monthlyData[month][category] += amount;
-                categoryTotals[category] += amount;
-            } else {
-                monthlyData[month]['שונות'] += amount;
-                categoryTotals['שונות'] += amount;
+            // Add amount to category (monthlyData[month] should always exist after initialization)
+            if (!monthlyData[month][category]) {
+                monthlyData[month][category] = 0;
             }
+            monthlyData[month][category] += amount;
+            
+            if (!categoryTotals[category]) {
+                categoryTotals[category] = 0;
+            }
+            categoryTotals[category] += amount;
         });
+        
+        console.log('Monthly data sample (month 1):', monthlyData[1]);
+        console.log('Category totals:', categoryTotals);
+        console.log('Number of categories:', categories.length);
+        console.log('Categories list:', categories);
+        console.log('✅ Transactions processing completed successfully!');
         
         // Calculate monthly totals (Income - Expenses)
         const monthlyTotals = {};
         for (let month = 1; month <= 12; month++) {
-            const income = monthlyData[month]['משכורת + ביטוח לאומי'] || 0;
+            const income = (monthlyData[month] && monthlyData[month]['משכורת + ביטוח לאומי']) || 0;
             const expenses = categories
                 .filter(cat => cat !== 'משכורת + ביטוח לאומי')
-                .reduce((sum, cat) => sum + monthlyData[month][cat], 0);
+                .reduce((sum, cat) => sum + ((monthlyData[month] && monthlyData[month][cat]) || 0), 0);
             monthlyTotals[month] = income - expenses;
         }
         
@@ -2352,14 +2927,14 @@ class BudgetSystem {
                 <tr>
                     <td class="month-name">${monthName}</td>
                     ${categories.map(cat => {
-                        const amount = monthlyData[month][cat];
+                        const amount = (monthlyData[month] && monthlyData[month][cat]) || 0;
                         const isIncome = cat === 'משכורת + ביטוח לאומי';
                         return `<td class="category-amount ${amount === 0 ? 'zero' : ''} ${isIncome ? 'income-cell' : ''}">${
                             amount === 0 ? '-' : this.formatCurrency(amount)
                         }</td>`;
                     }).join('')}
-                    <td class="total-monthly ${monthlyTotals[month] >= 0 ? 'positive' : 'negative'}">${
-                        monthlyTotals[month] === 0 ? '-' : this.formatCurrency(monthlyTotals[month])
+                    <td class="total-monthly ${(monthlyTotals[month] || 0) >= 0 ? 'positive' : 'negative'}">${
+                        (monthlyTotals[month] === 0 || !monthlyTotals[month]) ? '-' : this.formatCurrency(monthlyTotals[month])
                     }</td>
                 </tr>
             `;
@@ -2375,7 +2950,7 @@ class BudgetSystem {
                 <tr class="total-row">
                     <td class="month-name">סה״כ שנתי</td>
                     ${categories.map(cat => {
-                        const amount = categoryTotals[cat];
+                        const amount = categoryTotals[cat] || 0;
                         const isIncome = cat === 'משכורת + ביטוח לאומי';
                         return `<td class="category-total ${isIncome ? 'income-total' : ''}">${
                             amount === 0 ? '-' : this.formatCurrency(amount)
@@ -2389,7 +2964,12 @@ class BudgetSystem {
         </table>
         `;
         
+        console.log('Table HTML length:', tableHTML.length, 'chars');
+        console.log('Table HTML preview (first 500 chars):', tableHTML.substring(0, 500));
+        console.log('Number of <tr> tags in table:', (tableHTML.match(/<tr>/g) || []).length);
+        console.log('Setting container innerHTML...');
         container.innerHTML = tableHTML;
+        console.log('✅ Container innerHTML set successfully! Table should now be visible.');
         
         // Add summary statistics using already calculated values
         const netAmount = annualNet; // Use the already calculated value
@@ -2439,7 +3019,20 @@ class BudgetSystem {
             </div>
         `;
         
+        console.log('Adding summary statistics...');
         container.innerHTML += statsHTML;
+        console.log('✅ Annual summary table completed successfully! Check the dashboard.');
+        
+        } catch (error) {
+            console.error('Error in updateAnnualSummaryTable:', error);
+            container.innerHTML = `
+                <div style="background: #ffebee; padding: 20px; border-radius: 8px; border: 2px solid #f44336;">
+                    <h3 style="color: #d32f2f; margin: 0 0 10px 0;">❌ שגיאה בטעינת הטבלה</h3>
+                    <p style="color: #666; margin: 0;">${error.message}</p>
+                    <p style="color: #999; margin: 10px 0 0 0; font-size: 0.9em;">בדוק את הקונסול למידע נוסף</p>
+                </div>
+            `;
+        }
     }
 }
 
@@ -2461,4 +3054,43 @@ document.head.appendChild(style);
 let budgetSystem;
 document.addEventListener('DOMContentLoaded', async () => {
     budgetSystem = new BudgetSystem();
+    
+    // Fix categories for existing transactions - run after initialization
+    setTimeout(() => {
+        console.log('🔍 בודק עסקאות לתיקון...');
+        let fixed = 0;
+        let quotesRemoved = 0;
+        
+        budgetSystem.transactions.forEach(transaction => {
+            const itemName = transaction.item.trim();
+            const itemNameClean = itemName.replace(/["\u05f4]/g, '');
+            
+            // Remove quotes from item name
+            if (itemName !== itemNameClean) {
+                transaction.item = itemNameClean;
+                quotesRemoved++;
+            }
+            
+            // Fix category for ביטוח לאומי variants - ALWAYS update
+            if (itemNameClean === 'ביטוח לאומי' || itemNameClean === 'ביטוח לאומי ג' || itemNameClean.startsWith('ביטוח לאומי ג')) {
+                if (transaction.category !== 'ביטוח לאומי') {
+                    transaction.category = 'ביטוח לאומי';
+                    fixed++;
+                }
+            }
+        });
+        
+        if (fixed > 0 || quotesRemoved > 0) {
+            console.log(`✅ הסרת גרשיים: ${quotesRemoved} | תיקון קטגוריות: ${fixed}`);
+            budgetSystem.saveData();
+            budgetSystem.updateDisplay();
+            
+            let msg = [];
+            if (quotesRemoved > 0) msg.push(`${quotesRemoved} פריטים עודכנו (הוסרו גרשיים)`);
+            if (fixed > 0) msg.push(`${fixed} קטגוריות תוקנו`);
+            alert(`✅ ${msg.join('\n')}`);
+        } else {
+            console.log('ℹ️ לא נמצאו עסקאות לתיקון');
+        }
+    }, 1000);
 });

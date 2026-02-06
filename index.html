@@ -64,7 +64,11 @@
                                 <option value="12">דצמבר</option>
                             </select>
                         </div>
-                        <button id="addTransactionBtn" class="btn btn-primary">+ הוסף עסקה</button>
+                        <div style="display: flex; gap: 10px;">
+                            <button id="addTransactionBtn" class="btn btn-primary">+ הוסף עסקה</button>
+                            <button id="importCsvBtn" class="btn btn-secondary">📄 ייבוא CSV</button>
+                            <input type="file" id="importCsvFile" accept=".csv" style="display: none;">
+                        </div>
                     </div>
                 </div>
 
