@@ -1475,3 +1475,40 @@ body {
     border-top-color: white;
     animation: spin 1s ease-in-out infinite;
 }
+
+/* Color Selector Styles */
+.color-selector-cell {
+    text-align: center;
+    padding: 8px !important;
+}
+
+.color-btn {
+    transition: all 0.2s ease;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.color-btn:hover {
+    transform: scale(1.15);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+}
+
+.color-btn.selected {
+    transform: scale(1.1);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+/* Color Summary Styles */
+#colorSummary {
+    animation: slideInDown 0.3s ease;
+}
+
+@keyframes slideInDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}

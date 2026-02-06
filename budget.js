@@ -383,10 +383,12 @@ class BudgetSystem {
             const transactionIndex = this.transactions.findIndex(t => t.id === editId);
             
             if (transactionIndex !== -1) {
-                // Keep the original ID and update all other fields
+                // Keep the original ID and color, update all other fields
+                const originalColor = this.transactions[transactionIndex].color;
                 this.transactions[transactionIndex] = {
                     id: editId, // Preserve original ID
-                    ...transactionData
+                    ...transactionData,
+                    color: originalColor // Preserve original color
                 };
                 
                 console.log('Transaction updated:', this.transactions[transactionIndex]);
@@ -397,10 +399,11 @@ class BudgetSystem {
                 return;
             }
         } else {
-            // Create new transaction
+            // Create new transaction (no color by default)
             const transaction = {
                 id: Date.now() + Math.random(),
-                ...transactionData
+                ...transactionData,
+                color: null
             };
 
             this.transactions.push(transaction);
@@ -975,6 +978,11 @@ class BudgetSystem {
         sortedTransactions.forEach(transaction => {
             const row = document.createElement('tr');
             
+            // Apply row color if exists
+            if (transaction.color) {
+                row.style.backgroundColor = this.getColorCode(transaction.color);
+            }
+            
             // Create check info cell
             let checkInfo = '';
             if (transaction.paymentMethod === 'check' && transaction.checkDetails) {
@@ -987,6 +995,9 @@ class BudgetSystem {
                 checkInfo = `<span class="check-badge" title="צ'יק #${checkNum} למוטב: ${payee}">צ'יק #${checkNum}</span>`;
             }
             
+            // Create color selector
+            const colorCell = this.createColorSelector(transaction);
+            
             row.innerHTML = `
                 <td>${this.getMonthName(transaction.month)}</td>
                 <td>${transaction.item}</td>
@@ -995,6 +1006,7 @@ class BudgetSystem {
                 <td><span class="category-badge">${transaction.category}</span></td>
                 <td>${transaction.note || ''}</td>
                 <td>${checkInfo}</td>
+                <td class="color-selector-cell">${colorCell}</td>
                 <td class="action-buttons">
                     <button onclick="budgetSystem.editTransaction(${transaction.id})" class="btn btn-secondary btn-small" title="ערוך">✏️</button>
                     <button onclick="budgetSystem.deleteTransaction(${transaction.id})" class="btn btn-danger btn-small" title="מחק">🗑️</button>
@@ -1002,6 +1014,103 @@ class BudgetSystem {
             `;
             tbody.appendChild(row);
         });
+        
+        // Update color summary
+        this.updateColorSummary(currentYearTransactions);
+    }
+    
+    // Get color code from color name
+    getColorCode(colorName) {
+        const colors = {
+            'yellow': '#fff9c4',
+            'green': '#c8e6c9',
+            'blue': '#bbdefb',
+            'pink': '#f8bbd0',
+            'none': 'transparent'
+        };
+        return colors[colorName] || 'transparent';
+    }
+    
+    // Create color selector HTML
+    createColorSelector(transaction) {
+        const colors = [
+            { name: 'none', label: '—', color: '#f5f5f5' },
+            { name: 'yellow', label: '●', color: '#ffd54f' },
+            { name: 'green', label: '●', color: '#8ef393' },
+            { name: 'blue', label: '●', color: '#64b5f6' },
+            { name: 'pink', label: '●', color: '#f581e1' }
+        ];
+        
+        return colors.map(c => {
+            const isSelected = transaction.color === c.name;
+            return `<span class="color-btn ${isSelected ? 'selected' : ''}" 
+                         onclick="budgetSystem.changeTransactionColor(${transaction.id}, '${c.name}')"
+                         style="background-color: ${c.color}; cursor: pointer; display: inline-block; width: 20px; height: 20px; border-radius: 3px; margin: 1px; border: ${isSelected ? '2px solid #333' : '1px solid #ccc'};"
+                         title="${c.name === 'none' ? 'ללא צבע' : c.name}">
+                    </span>`;
+        }).join('');
+    }
+    
+    // Change transaction color
+    changeTransactionColor(transactionId, color) {
+        const transaction = this.transactions.find(t => t.id === transactionId);
+        if (transaction) {
+            transaction.color = color === 'none' ? null : color;
+            this.saveData();
+            this.updateTransactionsTable();
+        }
+    }
+    
+    // Update color summary
+    updateColorSummary(transactions) {
+        const summaryDiv = document.getElementById('colorSummary');
+        const summaryContent = document.getElementById('colorSummaryContent');
+        
+        if (!summaryDiv || !summaryContent) return;
+        
+        // Calculate totals by color
+        const colorTotals = {
+            'yellow': 0,
+            'green': 0,
+            'blue': 0,
+            'pink': 0
+        };
+        
+        transactions.forEach(t => {
+            if (t.color && colorTotals[t.color] !== undefined) {
+                colorTotals[t.color] += t.amount;
+            }
+        });
+        
+        // Check if any color has transactions
+        const hasColors = Object.values(colorTotals).some(v => v !== 0);
+        
+        if (!hasColors) {
+            summaryDiv.style.display = 'none';
+            return;
+        }
+        
+        summaryDiv.style.display = 'block';
+        
+        const colorNames = {
+            'yellow': '🟨 צהוב',
+            'green': '🟩 ירוק',
+            'blue': '🟦 כחול',
+            'pink': '🟪 ורוד'
+        };
+        
+        summaryContent.innerHTML = Object.entries(colorTotals)
+            .filter(([_, total]) => total !== 0)
+            .map(([color, total]) => {
+                return `
+                    <div style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: white; border-radius: 5px; border-right: 4px solid ${this.getColorCode(color)};">
+                        <span style="font-weight: 500;">${colorNames[color]}:</span>
+                        <span style="font-size: 1.1rem; font-weight: 600; color: ${total >= 0 ? '#4caf50' : '#f44336'};">
+                            ${this.formatCurrency(total)}
+                        </span>
+                    </div>
+                `;
+            }).join('');
     }
 
     // Mapping management
@@ -2186,7 +2295,8 @@ class BudgetSystem {
                 year: parseInt(year),
                 note: '',
                 paymentMethod: isCheckPayment ? 'check' : 'cash',
-                checkDetails: isCheckPayment ? { checkNumber: '', payeeName: '' } : null
+                checkDetails: isCheckPayment ? { checkNumber: '', payeeName: '' } : null,
+                color: 'yellow' // Auto-color CSV imports as yellow
             });
 
             // Small delay to ensure unique IDs
