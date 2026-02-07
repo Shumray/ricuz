@@ -383,6 +383,29 @@ body {
     box-shadow: 0 0 0 3px rgba(31, 78, 121, 0.1);
 }
 
+/* Color Select Styling */
+.color-select {
+    padding: 12px 15px;
+    border: 2px solid #e0e0e0;
+    border-radius: 10px;
+    font-family: inherit;
+    font-size: 1rem;
+    transition: all 0.3s ease;
+    background: white;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.color-select:hover {
+    border-color: #1f4e79;
+    background: #f8f9fa;
+}
+
+.color-select option {
+    padding: 10px;
+    font-size: 1rem;
+}
+
 .form-actions {
     display: flex;
     gap: 15px;
@@ -408,20 +431,29 @@ body {
 .data-table th {
     background: #1f4e79;
     color: white;
-    padding: 15px 12px;
+    padding: 8px 6px;
     font-weight: 600;
     text-align: right;
     border-bottom: none;
 }
 
 .data-table td {
-    padding: 12px;
+    padding: 6px;
     border-bottom: 1px solid #f0f0f0;
     text-align: right;
 }
 
 .data-table tbody tr:hover {
     background: rgba(31, 78, 121, 0.05);
+    transform: translateY(-1px);
+    transition: all 0.3s ease;
+}
+
+/* Enhanced hover for colored rows */
+.data-table tbody tr[style*="background"]:hover {
+    transform: translateY(-2px) scale(1.01);
+    filter: brightness(1.05);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
 }
 
 .data-table tbody tr:last-child td {
@@ -1490,7 +1522,7 @@ body {
     
     .data-table th,
     .data-table td {
-        padding: 8px 6px;
+        padding: 4px 3px;
     }
     
     .transaction-item {
@@ -1578,6 +1610,8 @@ body {
 .color-selector-cell {
     text-align: center;
     padding: 8px !important;
+    white-space: nowrap;
+    min-width: 120px;
 }
 
 .color-btn {

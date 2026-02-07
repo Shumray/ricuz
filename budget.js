@@ -12,6 +12,7 @@ class BudgetSystem {
         this.currentTab = 'data-entry';
         this.lastSelectedMonth = null; // Remember last selected month for new transactions
         this.lastSelectedYear = null; // Remember last selected year
+        this.lastSelectedColor = 'none'; // Remember last selected color for new transactions
 
         this.initialize();
     }
@@ -394,6 +395,9 @@ class BudgetSystem {
             // Show/hide check info
             this.updateCheckInfoDisplay();
             
+            // Set color
+            document.getElementById('transactionColor').value = editData.color || 'none';
+            
             // Change form title and button text
             document.querySelector('#transactionForm h3').textContent = 'עריכת עסקה';
             document.querySelector('#newTransactionForm button[type="submit"]').innerHTML = '💾 עדכן';
@@ -406,6 +410,9 @@ class BudgetSystem {
             document.getElementById('isCheck').checked = false;
             delete this.currentCheckData;
             this.updateCheckInfoDisplay();
+            
+            // Use last selected color
+            document.getElementById('transactionColor').value = this.lastSelectedColor;
             
             document.querySelector('#transactionForm h3').textContent = 'עסקה חדשה';
             document.querySelector('#newTransactionForm button[type="submit"]').innerHTML = '💾 שמור';
@@ -420,6 +427,7 @@ class BudgetSystem {
         document.getElementById('transactionForm').style.display = 'none';
         document.getElementById('newTransactionForm').reset();
         document.getElementById('isCheck').checked = false;
+        // Don't reset color - it will be set from lastSelectedColor when opening next time
         delete this.currentCheckData;
         
         // Reset form to "new transaction" mode
@@ -448,7 +456,8 @@ class BudgetSystem {
             item: document.getElementById('item').value.trim(),
             amount: parseFloat(document.getElementById('amount').value),
             note: document.getElementById('note').value.trim(),
-            isCheck: document.getElementById('isCheck').checked
+            isCheck: document.getElementById('isCheck').checked,
+            color: document.getElementById('transactionColor').value
         };
 
         // Validate data
@@ -476,7 +485,8 @@ class BudgetSystem {
             category: this.getCategoryForItem(formData.item),
             note: formData.note,
             paymentMethod: formData.isCheck ? 'check' : 'cash',
-            checkDetails: formData.isCheck ? this.currentCheckData : null
+            checkDetails: formData.isCheck ? this.currentCheckData : null,
+            color: formData.color === 'none' ? null : formData.color
         };
 
         if (isEditing) {
@@ -485,12 +495,10 @@ class BudgetSystem {
             const transactionIndex = this.transactions.findIndex(t => t.id === editId);
             
             if (transactionIndex !== -1) {
-                // Keep the original ID and color, update all other fields
-                const originalColor = this.transactions[transactionIndex].color;
+                // Keep the original ID, update all fields including color
                 this.transactions[transactionIndex] = {
                     id: editId, // Preserve original ID
-                    ...transactionData,
-                    color: originalColor // Preserve original color
+                    ...transactionData
                 };
                 
                 console.log('Transaction updated:', this.transactions[transactionIndex]);
@@ -501,12 +509,14 @@ class BudgetSystem {
                 return;
             }
         } else {
-            // Create new transaction (no color by default)
+            // Create new transaction with selected color
             const transaction = {
                 id: Date.now() + Math.random(),
-                ...transactionData,
-                color: null
+                ...transactionData
             };
+
+            // Save the selected color for next transaction
+            this.lastSelectedColor = formData.color;
 
             this.transactions.push(transaction);
             this.showNotification('העסקה נוספה בהצלחה!', 'success');
@@ -1096,7 +1106,10 @@ class BudgetSystem {
             
             // Apply row color if exists
             if (transaction.color) {
-                row.style.backgroundColor = this.getColorCode(transaction.color);
+                row.style.background = this.getColorGradient(transaction.color);
+                row.style.boxShadow = this.getColorShadow(transaction.color);
+                row.style.borderLeft = this.getColorBorder(transaction.color);
+                row.style.transition = 'all 0.3s ease';
             }
             
             // Create check info cell
@@ -1145,6 +1158,42 @@ class BudgetSystem {
             'none': 'transparent'
         };
         return colors[colorName] || 'transparent';
+    }
+    
+    // Get color gradient for table rows
+    getColorGradient(colorName) {
+        const gradients = {
+            'yellow': 'linear-gradient(135deg, #fffde7 0%, #ffd54f 25%, #fff59d 50%, #fff9c4 75%, #fffde7 100%)',
+            'green': 'linear-gradient(135deg, #e8f5e9 0%, #4caf50 25%, #81c784 50%, #a5d6a7 75%, #e8f5e9 100%)',
+            'blue': 'linear-gradient(135deg, #e3f2fd 0%, #42a5f5 25%, #64b5f6 50%, #90caf9 75%, #e3f2fd 100%)',
+            'pink': 'linear-gradient(135deg, #fce4ec 0%, #ec407a 25%, #f06292 50%, #f48fb1 75%, #fce4ec 100%)',
+            'none': 'transparent'
+        };
+        return gradients[colorName] || 'transparent';
+    }
+    
+    // Get color shadow for table rows
+    getColorShadow(colorName) {
+        const shadows = {
+            'yellow': '0 2px 8px rgba(255, 213, 79, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.5)',
+            'green': '0 2px 8px rgba(76, 175, 80, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.5)',
+            'blue': '0 2px 8px rgba(66, 165, 245, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.5)',
+            'pink': '0 2px 8px rgba(236, 64, 122, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.5)',
+            'none': 'none'
+        };
+        return shadows[colorName] || 'none';
+    }
+    
+    // Get border color for table rows
+    getColorBorder(colorName) {
+        const borders = {
+            'yellow': '3px solid #ffc107',
+            'green': '3px solid #4caf50',
+            'blue': '3px solid #2196f3',
+            'pink': '3px solid #e91e63',
+            'none': 'none'
+        };
+        return borders[colorName] || 'none';
     }
     
     // Create color selector HTML
@@ -1923,7 +1972,8 @@ class BudgetSystem {
             openingBalances: Array.from(this.openingBalances.entries()),
             monthlyNotes: this.monthlyNotes ? Array.from(this.monthlyNotes.entries()) : [],
             lastSelectedMonth: this.lastSelectedMonth,
-            lastSelectedYear: this.lastSelectedYear
+            lastSelectedYear: this.lastSelectedYear,
+            lastSelectedColor: this.lastSelectedColor
         };
         localStorage.setItem('budgetData', JSON.stringify(data));
         // Also save year separately as backup
@@ -1954,6 +2004,11 @@ class BudgetSystem {
                 // Load lastSelectedMonth
                 if (data.lastSelectedMonth) {
                     this.lastSelectedMonth = data.lastSelectedMonth;
+                }
+
+                // Load lastSelectedColor
+                if (data.lastSelectedColor) {
+                    this.lastSelectedColor = data.lastSelectedColor;
                 }
 
                 this.transactions = data.transactions || [];
@@ -2440,7 +2495,8 @@ class BudgetSystem {
                     'ספטמבר': '09', 'אוקטובר': '10', 'נובמבר': '11', 'דצמבר': '12'
                 };
                 const monthForFile = monthNumMap[mostFrequentMonth];
-                const csvFileName = `${monthForFile}_${yearForFile}_csv.csv`;
+                const numItems = filteredRows.length;
+                const csvFileName = `${monthForFile}_${yearForFile}_${numItems}-items_csv.csv`;
                 
                 // Save CSV file to Downloads folder
                 const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
