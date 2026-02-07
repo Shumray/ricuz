@@ -1233,8 +1233,15 @@ class BudgetSystem {
         
         if (!summaryDiv || !summaryContent) return;
         
-        // Calculate totals by color
+        // Calculate totals and counts by color
         const colorTotals = {
+            'yellow': 0,
+            'green': 0,
+            'blue': 0,
+            'pink': 0
+        };
+        
+        const colorCounts = {
             'yellow': 0,
             'green': 0,
             'blue': 0,
@@ -1244,6 +1251,7 @@ class BudgetSystem {
         transactions.forEach(t => {
             if (t.color && colorTotals[t.color] !== undefined) {
                 colorTotals[t.color] += t.amount;
+                colorCounts[t.color]++;
             }
         });
         
@@ -1267,9 +1275,10 @@ class BudgetSystem {
         summaryContent.innerHTML = Object.entries(colorTotals)
             .filter(([_, total]) => total !== 0)
             .map(([color, total]) => {
+                const count = colorCounts[color];
                 return `
                     <div style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: white; border-radius: 5px; border-right: 4px solid ${this.getColorCode(color)};">
-                        <span style="font-weight: 500;">${colorNames[color]}:</span>
+                        <span style="font-weight: 500;">${colorNames[color]} (${count}):</span>
                         <span style="font-size: 1.1rem; font-weight: 600; color: ${total >= 0 ? '#4caf50' : '#f44336'};">
                             ${this.formatCurrency(total)}
                         </span>
