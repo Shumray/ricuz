@@ -18,12 +18,88 @@ class BudgetSystem {
 
     // Initialize the system
     initialize() {
+        this.checkUserSetup(); // Check if user has entered their details
         this.initializeDefaultMappings();
         this.loadData();
         this.initializeYearSelector();
         this.initializeEventListeners();
         this.setCurrentMonth();
         this.updateDisplay();
+    }
+
+    // Check user setup and show modal if needed
+    checkUserSetup() {
+        const userData = localStorage.getItem('budgetUserData');
+        if (!userData) {
+            // Show setup modal
+            document.getElementById('userSetupModal').style.display = 'flex';
+        }
+        // Note: Title remains "מערכת תקציב גיא שומרי" - user details only appear in reports
+    }
+
+    // Get user data for reports
+    getUserData() {
+        const userData = localStorage.getItem('budgetUserData');
+        if (userData) {
+            return JSON.parse(userData);
+        }
+        return null;
+    }
+
+    // Save user data and close modal
+    saveUserData(name, phone, id = '') {
+        const userData = {
+            name: name,
+            phone: phone,
+            id: id || '',
+            setupDate: new Date().toISOString()
+        };
+        localStorage.setItem('budgetUserData', JSON.stringify(userData));
+        document.getElementById('userSetupModal').style.display = 'none';
+        this.showNotification(`ברוך הבא ${name}! המערכת מוכנה לשימוש`, 'success');
+    }
+
+    // Load report producer data to settings fields
+    loadReportProducerData() {
+        const userData = this.getUserData();
+        if (userData) {
+            document.getElementById('reportProducerName').value = userData.name || '';
+            document.getElementById('reportProducerPhone').value = userData.phone || '';
+            document.getElementById('reportProducerId').value = userData.id || '';
+        }
+    }
+
+    // Update report producer details
+    updateReportProducer() {
+        const name = document.getElementById('reportProducerName').value.trim();
+        const phone = document.getElementById('reportProducerPhone').value.trim();
+        const id = document.getElementById('reportProducerId').value.trim();
+        
+        if (!name) {
+            this.showNotification('יש להזין שם מלא', 'error');
+            return;
+        }
+        
+        if (phone && !/^\d{10}$/.test(phone)) {
+            this.showNotification('מספר טלפון חייב להיות בן 10 ספרות', 'error');
+            return;
+        }
+        
+        if (id && !/^\d{9}$/.test(id)) {
+            this.showNotification('תעודת זהות חייבת להיות בת 9 ספרות', 'error');
+            return;
+        }
+        
+        const userData = this.getUserData();
+        const updatedData = {
+            name: name,
+            phone: phone,
+            id: id || '',
+            setupDate: userData ? userData.setupDate : new Date().toISOString()
+        };
+        
+        localStorage.setItem('budgetUserData', JSON.stringify(updatedData));
+        this.showNotification('הפרטים עודכנו בהצלחה', 'success');
     }
 
     // Initialize default category mappings (fallback)
@@ -144,6 +220,17 @@ class BudgetSystem {
 
     // Initialize event listeners
     initializeEventListeners() {
+        // User setup form
+        document.getElementById('userSetupForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const name = document.getElementById('userName').value.trim();
+            const phone = document.getElementById('userPhone').value.trim();
+            const id = document.getElementById('userId').value.trim();
+            if (name) {
+                this.saveUserData(name, phone, id);
+            }
+        });
+
         // Tab navigation
         document.querySelectorAll('.tab-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
@@ -245,6 +332,11 @@ class BudgetSystem {
         document.getElementById('importFile').addEventListener('change', (e) => {
             this.importData(e.target.files[0]);
         });
+
+        // Update report producer details
+        document.getElementById('updateProducerBtn').addEventListener('click', () => {
+            this.updateReportProducer();
+        });
     }
 
     // Tab switching
@@ -260,6 +352,11 @@ class BudgetSystem {
             panel.classList.remove('active');
         });
         document.getElementById(tabId).classList.add('active');
+
+        // Load user data when switching to settings tab
+        if (tabId === 'settings') {
+            this.loadReportProducerData();
+        }
 
         this.currentTab = tabId;
 
@@ -2669,6 +2766,10 @@ class BudgetSystem {
         const monthName = this.getMonthName(month);
         const monthlyTransactions = this.transactions.filter(t => t.month === month);
         
+        // Get user data for report
+        const userData = this.getUserData();
+        const reportProducer = userData ? `${userData.name}${userData.phone ? ` | 📞 ${userData.phone}` : ''}${userData.id ? ` | ת"ז ${userData.id}` : ''}` : 'לא צוין';
+        
         // Calculate totals
         const income = monthlyTransactions
             .filter(t => t.type === 'income')
@@ -2884,6 +2985,7 @@ class BudgetSystem {
         <h1>דוח חודשי מפורט</h1>
         <h2>${monthName} ${new Date().getFullYear()}</h2>
         <p>נוצר בתאריך: ${new Date().toLocaleDateString('he-IL')}</p>
+        <p style="font-size: 0.9rem; opacity: 0.9;">מפיק הדוח: ${reportProducer}</p>
     </div>
 
     <div class="summary-grid">
@@ -3012,6 +3114,10 @@ class BudgetSystem {
 
     exportDashboardReport(selectedMonth) {
         const monthName = this.getMonthName(selectedMonth);
+        
+        // Get user data for report
+        const userData = this.getUserData();
+        const reportProducer = userData ? `${userData.name}${userData.phone ? ` | 📞 ${userData.phone}` : ''}${userData.id ? ` | ת"ז ${userData.id}` : ''}` : 'לא צוין';
         
         // Monthly data (for selected month)
         const monthlyTransactions = this.transactions.filter(t => {
@@ -3268,6 +3374,7 @@ class BudgetSystem {
         <h1>📈 דוח סיכום כללי</h1>
         <h2>שנת ${this.currentYear}</h2>
         <p>נוצר בתאריך: ${new Date().toLocaleDateString('he-IL')}</p>
+        <p style="font-size: 0.9rem; opacity: 0.9;">מפיק הדוח: ${reportProducer}</p>
     </div>
 
     <div class="summary-grid">

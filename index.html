@@ -12,11 +12,40 @@
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
 </head>
 <body>
+    <!-- User Setup Modal -->
+    <div id="userSetupModal" class="modal-overlay" style="display: none;">
+        <div class="modal-content" style="max-width: 500px; padding: 30px;">
+            <h2 style="text-align: center; color: #1f4e79; margin-bottom: 5px;">👤 ברוך הבא למערכת תקציב</h2>
+            <h3 style="text-align: center; color: #1f4e79; margin-top: 0; margin-bottom: 10px; font-weight: 500;">של גיא שומרי</h3>
+            <p style="text-align: center; color: #666; margin-bottom: 25px;">אנא הזן את פרטייך לפני תחילת השימוש</p>
+            <form id="userSetupForm">
+                <div style="margin-bottom: 20px;">
+                    <label for="userName" style="display: block; font-weight: 600; margin-bottom: 8px; color: #333;">שם מלא:</label>
+                    <input type="text" id="userName" required style="width: 100%; padding: 12px; border: 2px solid #ddd; border-radius: 8px; font-size: 16px; font-family: 'Heebo', sans-serif;" placeholder="הזן שם מלא">
+                </div>
+                <div style="margin-bottom: 20px;">
+                    <label for="userPhone" style="display: block; font-weight: 600; margin-bottom: 8px; color: #333;">מספר נייד (אופציונלי):</label>
+                    <input type="tel" id="userPhone" pattern="[0-9]{10}" maxlength="10" style="width: 100%; padding: 12px; border: 2px solid #ddd; border-radius: 8px; font-size: 16px; font-family: 'Heebo', sans-serif;" placeholder="05XXXXXXXX">
+                    <small style="color: #666; display: block; margin-top: 5px;">10 ספרות בלבד (אופציונלי)</small>
+                </div>
+                <div style="margin-bottom: 25px;">
+                    <label for="userId" style="display: block; font-weight: 600; margin-bottom: 8px; color: #333;">תעודת זהות (אופציונלי):</label>
+                    <input type="text" id="userId" pattern="[0-9]{9}" maxlength="9" style="width: 100%; padding: 12px; border: 2px solid #ddd; border-radius: 8px; font-size: 16px; font-family: 'Heebo', sans-serif;" placeholder="123456789">
+                    <small style="color: #666; display: block; margin-top: 5px;">9 ספרות בלבד (אופציונלי)</small>
+                </div>
+                <button type="submit" style="width: 100%; padding: 15px; background: #1f4e79; color: white; border: none; border-radius: 8px; font-size: 18px; font-weight: 600; cursor: pointer; font-family: 'Heebo', sans-serif;">✅ התחל שימוש במערכת</button>
+            </form>
+        </div>
+    </div>
+
     <div class="container">
         <!-- Header -->
         <header class="header">
             <div class="header-content">
-                <h1 class="title">🎯 מערכת תקציב גיא שומרי</h1>
+                <div class="title-wrapper">
+                    <div class="title-icon">🎯</div>
+                    <h1 class="title">מערכת תקציב<br><span class="title-highlight">גיא שומרי</span></h1>
+                </div>
                 <p class="subtitle">מערכת ניהול תקציב חכמה ופשוטה</p>
                 <div class="year-selector-header">
                     <label for="yearSelect">שנה נבחרת:</label>
@@ -141,6 +170,26 @@
             <div id="settings" class="tab-panel">
                 <div class="panel-header">
                     <h2>⚙️ הגדרות מערכת</h2>
+                </div>
+
+                <!-- User Details Section -->
+                <div class="settings-section">
+                    <h3 style="color: #1f4e79; margin-bottom: 15px;">👤 פרטי מפיק הדוח</h3>
+                    <div class="form-grid" style="margin-bottom: 15px;">
+                        <div class="form-group">
+                            <label for="reportProducerName">שם מלא</label>
+                            <input type="text" id="reportProducerName" placeholder="הזן שם מלא">
+                        </div>
+                        <div class="form-group">
+                            <label for="reportProducerPhone">מספר טלפון (אופציונלי)</label>
+                            <input type="tel" id="reportProducerPhone" placeholder="הזן מספר טלפון" pattern="[0-9]{10}" maxlength="10">
+                        </div>
+                        <div class="form-group">
+                            <label for="reportProducerId">תעודת זהות (אופציונלי)</label>
+                            <input type="text" id="reportProducerId" placeholder="הזן ת\"ז" pattern="[0-9]{9}" maxlength="9">
+                        </div>
+                    </div>
+                    <button id="updateProducerBtn" class="btn btn-primary">💾 שמור שינויים</button>
                 </div>
 
                 <!-- Settings Actions -->
