@@ -211,6 +211,11 @@ class BudgetSystem {
             this.exportMonthlyReport(selectedMonth);
         });
 
+        document.getElementById('exportDashboardReportBtn').addEventListener('click', () => {
+            const selectedMonth = parseInt(document.getElementById('dashboardMonth').value);
+            this.exportDashboardReport(selectedMonth);
+        });
+
         // Import CSV handler
         document.getElementById('importCsvBtn').addEventListener('click', () => {
             document.getElementById('importCsvFile').click();
@@ -264,7 +269,7 @@ class BudgetSystem {
                 this.updateMonthlyView();
             } else if (tabId === 'dashboard') {
                 this.updateDashboard();
-            } else if (tabId === 'mapping') {
+            } else if (tabId === 'settings') {
                 this.updateMappingTable();
             }
         }, 100);
@@ -414,6 +419,20 @@ class BudgetSystem {
         this.updateTransactionsTable();
         this.hideTransactionForm();
         this.updateDisplay();
+        
+        // Return focus to "Add Transaction" button after adding new transaction (not after edit)
+        if (!isEditing) {
+            // Use requestAnimationFrame to ensure DOM updates are complete
+            requestAnimationFrame(() => {
+                setTimeout(() => {
+                    const addBtn = document.getElementById('addTransactionBtn');
+                    if (addBtn) {
+                        addBtn.focus();
+                        console.log('Focus returned to Add Transaction button');
+                    }
+                }, 150);
+            });
+        }
     }
 
     getCategoryForItem(item) {
@@ -2110,15 +2129,22 @@ class BudgetSystem {
         });
     }
 
-    // Import CSV file
+    // Import CSV or XLSX file
     importCSV(file) {
         if (!file) return;
 
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            try {
-                const csvContent = e.target.result;
-                const result = this.parseAndValidateCSV(csvContent);
+        const fileExtension = file.name.split('.').pop().toLowerCase();
+
+        if (fileExtension === 'xlsx' || fileExtension === 'xls') {
+            // Process Excel file
+            this.processExcelFile(file);
+        } else {
+            // Process CSV file (original flow)
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const csvContent = e.target.result;
+                    const result = this.parseAndValidateCSV(csvContent);
                 
                 if (!result.success) {
                     alert('שגיאה בטעינת הקובץ:\n' + result.error);
@@ -2170,10 +2196,227 @@ class BudgetSystem {
                 }
             } catch (error) {
                 console.error('Error importing CSV:', error);
-                alert('שגיאה בקריאת הקובץ:\n' + error.message + '\n\nאנא ודא שהקובץ הוא CSV תקין.');
+                    alert('שגיאה בקריאת הקובץ:\n' + error.message + '\n\nאנא ודא שהקובץ הוא CSV תקין.');
+                }
+            };
+            reader.readAsText(file, 'UTF-8');
+        }
+    }
+
+    // Process Excel file and convert to CSV format
+    processExcelFile(file) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                
+                // Get first sheet
+                const firstSheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[firstSheetName];
+                
+                // Convert to array of arrays
+                const rawData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+                
+                // Find header row (contains 'תאריך' and 'הפעולה')
+                let headerRowIndex = -1;
+                for (let i = 0; i < rawData.length; i++) {
+                    const row = rawData[i];
+                    const rowStr = row.join('|');
+                    if (rowStr.includes('תאריך') && rowStr.includes('הפעולה')) {
+                        headerRowIndex = i;
+                        break;
+                    }
+                }
+                
+                if (headerRowIndex === -1) {
+                    alert('שגיאה: לא נמצאה שורת כותרות בקובץ.\nצפוי מבנה עם עמודות: תאריך, הפעולה');
+                    return;
+                }
+                
+                const headers = rawData[headerRowIndex];
+                const dataRows = rawData.slice(headerRowIndex + 1);
+                
+                // Map column indices
+                const colMap = {};
+                headers.forEach((header, idx) => {
+                    const h = String(header).trim();
+                    colMap[h] = idx;
+                });
+                
+                // Columns to keep
+                const dateCol = colMap['תאריך'];
+                const actionCol = colMap['הפעולה'];
+                const debitCol = colMap['חובה'] !== undefined ? colMap['חובה'] : colMap['חיוב'];
+                const creditCol = colMap['זכות'];
+                
+                if (dateCol === undefined || actionCol === undefined) {
+                    alert('שגיאה: חסרות עמודות חובה בקובץ (תאריך, הפעולה)');
+                    return;
+                }
+                
+                // Process rows
+                const monthMap = {
+                    '01': 'ינואר', '02': 'פברואר', '03': 'מרץ', '04': 'אפריל',
+                    '05': 'מאי', '06': 'יוני', '07': 'יולי', '08': 'אוגוסט',
+                    '09': 'ספטמבר', '10': 'אוקטובר', '11': 'נובמבר', '12': 'דצמבר'
+                };
+                
+                const processedRows = [];
+                const monthCounts = {};
+                
+                dataRows.forEach(row => {
+                    if (!row || row.length === 0) return;
+                    
+                    let dateValue = row[dateCol];
+                    const action = String(row[actionCol] || '').trim();
+                    const debit = row[debitCol];
+                    const credit = row[creditCol];
+                    
+                    if (!action) return; // Skip empty rows
+                    
+                    // Clean action from quotes and Hebrew geresh/gershayim
+                    const cleanAction = action.replace(/["\u0022\u05F4\u05F3]/g, '');
+                    
+                    // Parse date
+                    let dateStr = '';
+                    if (typeof dateValue === 'number') {
+                        // Excel date number
+                        const excelDate = XLSX.SSF.parse_date_code(dateValue);
+                        dateStr = `${excelDate.y}-${String(excelDate.m).padStart(2, '0')}-${String(excelDate.d).padStart(2, '0')}`;
+                    } else if (typeof dateValue === 'string') {
+                        dateStr = dateValue.replace(' 00:00:00', '').trim();
+                    }
+                    
+                    if (!dateStr || dateStr.length < 10) return;
+                    
+                    // Extract year and month
+                    const year = dateStr.substring(0, 4);
+                    const monthNum = dateStr.substring(5, 7);
+                    const monthName = monthMap[monthNum];
+                    
+                    if (!monthName) return;
+                    
+                    // Count months
+                    monthCounts[monthName] = (monthCounts[monthName] || 0) + 1;
+                    
+                    processedRows.push({
+                        year,
+                        month: monthName,
+                        item: cleanAction,
+                        debit: debit || '',
+                        credit: credit || ''
+                    });
+                });
+                
+                // Find most frequent month
+                let mostFrequentMonth = null;
+                let maxCount = 0;
+                for (const [month, count] of Object.entries(monthCounts)) {
+                    if (count > maxCount) {
+                        maxCount = count;
+                        mostFrequentMonth = month;
+                    }
+                }
+                
+                // Keep only rows from most frequent month
+                const filteredRows = processedRows.filter(row => row.month === mostFrequentMonth);
+                
+                if (filteredRows.length === 0) {
+                    alert('שגיאה: לא נמצאו נתונים תקינים בקובץ');
+                    return;
+                }
+                
+                // Get year for filename
+                const yearForFile = filteredRows[0].year;
+                
+                // Create CSV content
+                let csvContent = 'שנה,חודש,פריט,חובה,זכות\n';
+                filteredRows.forEach(row => {
+                    csvContent += `${row.year},${row.month},${row.item},${row.debit},${row.credit}\n`;
+                });
+                
+                // Create a virtual CSV file name
+                const monthNumMap = {
+                    'ינואר': '01', 'פברואר': '02', 'מרץ': '03', 'אפריל': '04',
+                    'מאי': '05', 'יוני': '06', 'יולי': '07', 'אוגוסט': '08',
+                    'ספטמבר': '09', 'אוקטובר': '10', 'נובמבר': '11', 'דצמבר': '12'
+                };
+                const monthForFile = monthNumMap[mostFrequentMonth];
+                const csvFileName = `${monthForFile}_${yearForFile}_csv.csv`;
+                
+                // Save CSV file to Downloads folder
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement('a');
+                const url = URL.createObjectURL(blob);
+                link.setAttribute('href', url);
+                link.setAttribute('download', csvFileName);
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+                
+                // Show file saved notification with location
+                this.showNotification(
+                    `💾 קובץ CSV נשמר בהצלחה!\n\n` +
+                    `📁 מיקום: תיקיית Downloads\n` +
+                    `📄 קובץ: ${csvFileName}\n` +
+                    `📊 ${mostFrequentMonth} ${yearForFile}\n` +
+                    `✅ ${filteredRows.length} עסקאות`,
+                    'success'
+                );
+                
+                // Now parse the CSV content using existing logic
+                const result = this.parseAndValidateCSV(csvContent);
+                
+                if (!result.success) {
+                    alert('שגיאה בעיבוד הקובץ:\n' + result.error);
+                    return;
+                }
+                
+                // Add transactions
+                let addedCount = 0;
+                let skippedCount = 0;
+                const importedMonth = result.transactions.length > 0 ? result.transactions[0].month : null;
+                
+                result.transactions.forEach(trans => {
+                    if (this.isDuplicateTransaction(trans)) {
+                        skippedCount++;
+                    } else {
+                        this.transactions.push(trans);
+                        addedCount++;
+                    }
+                });
+                
+                this.saveData();
+                
+                let message = `✅ ${addedCount} עסקאות נוספו מקובץ Excel`;
+                if (skippedCount > 0) {
+                    message += `\n⚠️ ${skippedCount} עסקאות כפולות דולגו`;
+                }
+                this.showNotification(message, addedCount > 0 ? 'success' : 'info');
+                
+                // Update displays
+                try {
+                    this.updateDisplay();
+                    if (importedMonth) {
+                        const dashboardMonthSelect = document.getElementById('dashboardMonth');
+                        if (dashboardMonthSelect) {
+                            dashboardMonthSelect.value = importedMonth.toString().padStart(2, '0');
+                        }
+                    }
+                    this.updateDashboard();
+                } catch (displayError) {
+                    console.error('Error updating displays:', displayError);
+                }
+                
+            } catch (error) {
+                console.error('Error processing Excel file:', error);
+                alert('שגיאה בקריאת קובץ Excel:\n' + error.message);
             }
         };
-        reader.readAsText(file, 'UTF-8');
+        reader.readAsArrayBuffer(file);
     }
 
     // Parse and validate CSV content
@@ -2237,8 +2480,8 @@ class BudgetSystem {
 
             const year = values[0].trim();
             const monthName = values[1].trim();
-            // Remove " character from item name
-            const item = values[2].trim().replace(/"/g, '');
+            // Remove " character and Hebrew geresh/gershayim from item name
+            const item = values[2].trim().replace(/["\u0022\u05F4\u05F3]/g, '');
             const debit = values[3].trim(); // חובה (הוצאה)
             const credit = values[4].trim(); // זכות (הכנסה)
 
@@ -2765,6 +3008,507 @@ class BudgetSystem {
             
             this.showNotification(`החלון נחסם - הדוח נשמר כקובץ`, 'info');
         }
+    }
+
+    exportDashboardReport(selectedMonth) {
+        const monthName = this.getMonthName(selectedMonth);
+        
+        // Monthly data (for selected month)
+        const monthlyTransactions = this.transactions.filter(t => {
+            const transactionYear = t.year || this.currentYear;
+            return t.month === selectedMonth && transactionYear === this.currentYear;
+        });
+        
+        const monthlyExpenses = monthlyTransactions
+            .filter(t => t.type === 'expense')
+            .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+        
+        const monthlyIncome = monthlyTransactions
+            .filter(t => t.type === 'income')
+            .reduce((sum, t) => sum + t.amount, 0);
+        
+        const monthlyNet = monthlyIncome - monthlyExpenses;
+        
+        // Annual data (for entire year)
+        const yearTransactions = this.transactions.filter(t => {
+            const transactionYear = t.year || this.currentYear;
+            return transactionYear === this.currentYear;
+        });
+        
+        const annualExpenses = yearTransactions
+            .filter(t => t.type === 'expense')
+            .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+        
+        const annualIncome = yearTransactions
+            .filter(t => t.type === 'income')
+            .reduce((sum, t) => sum + t.amount, 0);
+        
+        const annualNet = annualIncome - annualExpenses;
+        
+        // Category breakdown for selected month
+        const categoryTotals = {};
+        monthlyTransactions.filter(t => t.type === 'expense').forEach(transaction => {
+            const category = transaction.category || 'לא מקוטלג';
+            categoryTotals[category] = (categoryTotals[category] || 0) + Math.abs(transaction.amount);
+        });
+        
+        const sortedCategories = Object.entries(categoryTotals)
+            .sort((a, b) => b[1] - a[1]);
+        
+        // Monthly summary table for entire year
+        const months = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+        const monthlySummaryRows = months.map(month => {
+            const trans = this.transactions.filter(t => {
+                const transactionYear = t.year || this.currentYear;
+                return t.month === month && transactionYear === this.currentYear;
+            });
+            
+            const expenses = trans
+                .filter(t => t.type === 'expense')
+                .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+            
+            const income = trans
+                .filter(t => t.type === 'income')
+                .reduce((sum, t) => sum + t.amount, 0);
+            
+            const net = income - expenses;
+            
+            return {
+                month: this.getMonthName(month),
+                income,
+                expenses,
+                net,
+                isSelected: month === selectedMonth
+            };
+        });
+        
+        // Generate HTML report
+        const reportHTML = `
+<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>דוח סיכום כללי - ${this.currentYear}</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', 'Arial', sans-serif;
+            direction: rtl;
+            text-align: right;
+            margin: 15px;
+            background: #f8f9fa;
+            color: #333;
+        }
+        .report-header {
+            background: linear-gradient(135deg, #1f4e79 0%, #2e86ab 100%);
+            color: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            text-align: center;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .report-header h1 {
+            margin: 5px 0;
+            font-size: 1.5rem;
+        }
+        .report-header h2 {
+            margin: 5px 0;
+            font-size: 1.2rem;
+            font-weight: 500;
+        }
+        .report-header p {
+            margin: 5px 0;
+            font-size: 0.9rem;
+            opacity: 0.9;
+        }
+        .summary-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+        .summary-card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            border: 2px solid #e0e6ed;
+        }
+        .summary-card h3 {
+            margin-top: 0;
+            margin-bottom: 10px;
+            font-size: 1.1rem;
+            color: #1f4e79;
+        }
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        .kpi-item {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 6px;
+            border: 2px solid;
+        }
+        .kpi-item.expenses { border-color: #dc3545; }
+        .kpi-item.income { border-color: #28a745; }
+        .kpi-item.net { border-color: #17a2b8; }
+        .kpi-label {
+            display: block;
+            font-size: 0.85rem;
+            color: #666;
+            margin-bottom: 5px;
+        }
+        .kpi-value {
+            display: block;
+            font-size: 1.3rem;
+            font-weight: 600;
+        }
+        .kpi-value.positive { color: #28a745; }
+        .kpi-value.negative { color: #dc3545; }
+        .table-container {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin-bottom: 15px;
+        }
+        .summary-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+        .summary-table th, .summary-table td {
+            padding: 8px 10px;
+            text-align: right;
+            border: 1px solid #ddd;
+        }
+        .summary-table th {
+            background: #1f4e79;
+            color: white;
+            font-weight: 600;
+        }
+        .summary-table tr:nth-child(even) {
+            background: #f8f9fa;
+        }
+        .summary-table tr.selected {
+            background: #fff3cd !important;
+            font-weight: 600;
+        }
+        .positive { color: #28a745; }
+        .negative { color: #dc3545; }
+        @media print {
+            body { 
+                background: white;
+                margin: 10px;
+            }
+            .report-header { 
+                background: #1f4e79 !important;
+                padding: 10px 15px !important;
+                margin-bottom: 10px !important;
+            }
+            .print-buttons { display: none !important; }
+            .page-break { page-break-before: always; }
+        }
+        .print-buttons {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            display: flex;
+            gap: 10px;
+            z-index: 1000;
+        }
+        .print-btn {
+            background: #1f4e79;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            transition: all 0.3s ease;
+        }
+        .print-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+        }
+        .close-btn {
+            background: #f44336;
+        }
+        .save-btn {
+            background: #4caf50;
+        }
+    </style>
+</head>
+<body>
+    <div class="print-buttons">
+        <button class="print-btn" onclick="window.print()">🖨️ הדפס דוח</button>
+        <button class="print-btn save-btn" onclick="saveAsHTML()">💾 שמור כ-HTML</button>
+        <button class="print-btn close-btn" onclick="window.close()">❌ סגור</button>
+    </div>
+    
+    <script>
+        function saveAsHTML() {
+            const htmlContent = document.documentElement.outerHTML;
+            const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = 'דוח-סיכום-${this.currentYear}.html';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(link.href);
+        }
+    </script>
+    
+    <div class="report-header">
+        <h1>📈 דוח סיכום כללי</h1>
+        <h2>שנת ${this.currentYear}</h2>
+        <p>נוצר בתאריך: ${new Date().toLocaleDateString('he-IL')}</p>
+    </div>
+
+    <div class="summary-grid">
+        <div class="summary-card">
+            <h3>� סיכום שנתי - ${this.currentYear}</h3>
+            <div class="kpi-grid">
+                <div class="kpi-item expenses">
+                    <span class="kpi-label">הוצאות:</span>
+                    <span class="kpi-value">${this.formatCurrency(annualExpenses)}</span>
+                </div>
+                <div class="kpi-item income">
+                    <span class="kpi-label">הכנסות:</span>
+                    <span class="kpi-value">${this.formatCurrency(annualIncome)}</span>
+                </div>
+                <div class="kpi-item net" style="grid-column: 1 / -1;">
+                    <span class="kpi-label">מאזן שנתי:</span>
+                    <span class="kpi-value ${annualNet >= 0 ? 'positive' : 'negative'}">${this.formatCurrency(annualNet)}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="table-container">
+        <h3>📅 סיכום חודשי - שנת ${this.currentYear}</h3>
+        <table class="summary-table">
+            <thead>
+                <tr>
+                    <th>חודש</th>
+                    <th>הכנסות</th>
+                    <th>הוצאות</th>
+                    <th>מאזן</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${monthlySummaryRows.map(row => `
+                <tr${row.isSelected ? ' class="selected"' : ''}>
+                    <td>${row.month}</td>
+                    <td class="positive">${this.formatCurrency(row.income)}</td>
+                    <td class="negative">${this.formatCurrency(row.expenses)}</td>
+                    <td class="${row.net >= 0 ? 'positive' : 'negative'}">${this.formatCurrency(row.net)}</td>
+                </tr>`).join('')}
+                <tr style="font-weight: 600; background: #e3f2fd;">
+                    <td>סה"כ שנתי</td>
+                    <td class="positive">${this.formatCurrency(annualIncome)}</td>
+                    <td class="negative">${this.formatCurrency(annualExpenses)}</td>
+                    <td class="${annualNet >= 0 ? 'positive' : 'negative'}">${this.formatCurrency(annualNet)}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    ${this.generateCategoryBreakdownTable()}
+</body>
+</html>`;
+
+        // Open report in new window
+        const newWindow = window.open('', '_blank', 'width=1000,height=800,menubar=yes,toolbar=yes,location=no,status=yes,scrollbars=yes,resizable=yes');
+        
+        if (newWindow) {
+            newWindow.document.write(reportHTML);
+            newWindow.document.close();
+            
+            // Add keyboard shortcuts
+            newWindow.addEventListener('keydown', function(e) {
+                if (e.ctrlKey && e.key === 'p') {
+                    e.preventDefault();
+                    newWindow.print();
+                }
+                if (e.key === 'Escape') {
+                    newWindow.close();
+                }
+            });
+            
+            this.showNotification(`דוח סיכום נפתח בחלון חדש - Ctrl+P להדפסה, לחץ על 💾 לשמירה כ-HTML, או Esc לסגירה`, 'success');
+        } else {
+            // Fallback if popup is blocked
+            const reportBlob = new Blob([reportHTML], { type: 'text/html;charset=utf-8' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(reportBlob);
+            link.download = `דוח-סיכום-${this.currentYear}.html`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            this.showNotification(`החלון נחסם - הדוח נשמר כקובץ`, 'info');
+        }
+    }
+
+    generateCategoryBreakdownTable() {
+        // Filter by current year
+        const currentYearTransactions = this.transactions.filter(t => {
+            const transactionYear = t.year || this.currentYear;
+            return transactionYear === this.currentYear;
+        });
+        
+        if (currentYearTransactions.length === 0) {
+            return `
+                <div class="table-container">
+                    <h3>📋 טבלת סיכום שנתי - פילוח קטגוריות חודשי</h3>
+                    <p style="text-align: center; color: #666; padding: 20px;">אין עסקאות לשנה ${this.currentYear}</p>
+                </div>
+            `;
+        }
+        
+        // Collect all categories from actual data
+        const allCategories = new Set();
+        currentYearTransactions.forEach(transaction => {
+            let category = transaction.category || 'שונות';
+            // Handle special income category mapping
+            if (category === 'משכורת' || category === 'ביטוח לאומי' || category === 'מענק עבודה') {
+                category = 'משכורת + ביטוח לאומי';
+            }
+            allCategories.add(category);
+        });
+        
+        // Convert to sorted array - income category first, then alphabetically
+        const categories = Array.from(allCategories).sort((a, b) => {
+            if (a === 'משכורת + ביטוח לאומי') return -1;
+            if (b === 'משכורת + ביטוח לאומי') return 1;
+            return a.localeCompare(b, 'he');
+        });
+        
+        // Process data for all 12 months
+        const monthlyData = {};
+        const categoryTotals = {};
+        
+        // Initialize data structures
+        for (let month = 1; month <= 12; month++) {
+            monthlyData[month] = {};
+            categories.forEach(cat => {
+                monthlyData[month][cat] = 0;
+            });
+        }
+        
+        // Initialize ALL category totals to 0
+        categories.forEach(cat => {
+            categoryTotals[cat] = 0;
+        });
+        
+        currentYearTransactions.forEach(transaction => {
+            const month = parseInt(transaction.month);
+            let category = transaction.category || 'שונות';
+            
+            // Skip if month is invalid
+            if (!month || isNaN(month) || month < 1 || month > 12) {
+                return;
+            }
+            
+            // Handle special income category mapping
+            if (category === 'משכורת' || category === 'ביטוח לאומי' || category === 'מענק עבודה') {
+                category = 'משכורת + ביטוח לאומי';
+            }
+            
+            // For income transactions, use positive amount; for expenses, use absolute value
+            const amount = transaction.type === 'income' ? transaction.amount : Math.abs(transaction.amount);
+            
+            monthlyData[month][category] += amount;
+            categoryTotals[category] += amount;
+        });
+        
+        // Calculate monthly totals (Income - Expenses)
+        const monthlyTotals = {};
+        for (let month = 1; month <= 12; month++) {
+            const income = monthlyData[month]['משכורת + ביטוח לאומי'] || 0;
+            const expenses = categories
+                .filter(cat => cat !== 'משכורת + ביטוח לאומי')
+                .reduce((sum, cat) => sum + (monthlyData[month][cat] || 0), 0);
+            monthlyTotals[month] = income - expenses;
+        }
+        
+        // Calculate totals
+        const incomeTotal = categoryTotals['משכורת + ביטוח לאומי'] || 0;
+        const expenseCategories = categories.filter(cat => cat !== 'משכורת + ביטוח לאומי');
+        const expenseTotal = expenseCategories.reduce((sum, cat) => sum + categoryTotals[cat], 0);
+        const annualNetTotal = incomeTotal - expenseTotal;
+        
+        // Build HTML table with inline styles matching the dashboard
+        let tableHTML = `
+            <div class="table-container" style="page-break-before: always;">
+                <h3>📋 טבלת סיכום שנתי - פילוח קטגוריות חודשי</h3>
+                <div style="overflow-x: auto;">
+                    <table class="summary-table" style="width: 100%; border-collapse: collapse; font-size: 0.75rem;">
+                        <thead>
+                            <tr>
+                                <th style="width: 80px; padding: 6px 8px; text-align: right; border: 1px solid #ddd; background: #1f4e79; color: white; font-weight: 600; white-space: nowrap;">חודש</th>
+                                ${categories.map(cat => {
+                                    const isIncome = cat === 'משכורת + ביטוח לאומי';
+                                    return `<th style="min-width: 70px; padding: 6px 8px; text-align: right; border: 1px solid #ddd; background: ${isIncome ? '#4caf50' : '#1f4e79'}; color: white; font-weight: 600; font-size: 0.7rem; white-space: nowrap;">${cat}</th>`;
+                                }).join('')}
+                                <th style="min-width: 80px; padding: 6px 8px; text-align: right; border: 1px solid #ddd; background: #1976d2; color: white; font-weight: 600; white-space: nowrap;">יתרה נטו</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+        `;
+        
+        // Add rows for each month
+        for (let month = 1; month <= 12; month++) {
+            const monthName = this.getMonthName(month);
+            const rowBg = month % 2 === 0 ? '#f8f9fa' : 'white';
+            tableHTML += `
+                            <tr style="background: ${rowBg};">
+                                <td style="padding: 6px 8px; text-align: right; border: 1px solid #ddd; font-weight: 600; white-space: nowrap;">${monthName}</td>
+                                ${categories.map(cat => {
+                                    const amount = monthlyData[month][cat] || 0;
+                                    const isIncome = cat === 'משכורת + ביטוח לאומי';
+                                    const cellBg = isIncome ? '#e8f5e9' : '';
+                                    const cellColor = amount === 0 ? '#ccc' : (isIncome ? '#2e7d32' : '#333');
+                                    return `<td style="padding: 6px 8px; text-align: right; border: 1px solid #ddd; background: ${cellBg}; color: ${cellColor}; white-space: nowrap;">${
+                                        amount === 0 ? '-' : this.formatCurrency(amount)
+                                    }</td>`;
+                                }).join('')}
+                                <td style="padding: 6px 8px; text-align: right; border: 1px solid #ddd; font-weight: 600; color: ${monthlyTotals[month] >= 0 ? '#2e7d32' : '#c62828'}; white-space: nowrap;">${
+                                    monthlyTotals[month] === 0 ? '-' : this.formatCurrency(monthlyTotals[month])
+                                }</td>
+                            </tr>
+            `;
+        }
+        
+        // Add totals row
+        tableHTML += `
+                            <tr style="background: #e3f2fd; font-weight: 600;">
+                                <td style="padding: 8px; text-align: right; border: 1px solid #ddd; white-space: nowrap;">סה״כ שנתי</td>
+                                ${categories.map(cat => {
+                                    const amount = categoryTotals[cat] || 0;
+                                    const isIncome = cat === 'משכורת + ביטוח לאומי';
+                                    const cellBg = isIncome ? '#c8e6c9' : '#e3f2fd';
+                                    return `<td style="padding: 8px; text-align: right; border: 1px solid #ddd; background: ${cellBg}; white-space: nowrap;">${
+                                        amount === 0 ? '-' : this.formatCurrency(amount)
+                                    }</td>`;
+                                }).join('')}
+                                <td style="padding: 8px; text-align: right; border: 1px solid #ddd; background: ${annualNetTotal >= 0 ? '#4caf50' : '#f44336'}; color: white; font-weight: 600; white-space: nowrap;">
+                                    ${this.formatCurrency(annualNetTotal)}
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+        
+        return tableHTML;
     }
 
     updateCheckPaymentsSummary(month) {

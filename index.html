@@ -8,6 +8,8 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- SheetJS for Excel file processing -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
 </head>
 <body>
     <div class="container">
@@ -23,20 +25,14 @@
                     </select>
                 </div>
             </div>
-            <div class="header-actions">
-                <button id="exportMappingsBtn" class="btn btn-secondary">📋 ייצוא מיפויים</button>
-                <button id="exportBtn" class="btn btn-secondary">📥 ייצוא נתונים</button>
-                <button id="importBtn" class="btn btn-secondary">📤 ייבוא נתונים</button>
-                <input type="file" id="importFile" accept=".json" style="display: none;">
-            </div>
         </header>
 
         <!-- Navigation Tabs -->
         <nav class="nav-tabs">
             <button class="tab-btn active" data-tab="data-entry">📊 הזנת נתונים</button>
-            <button class="tab-btn" data-tab="mapping">🗺️ מיפוי קטגוריות</button>
             <button class="tab-btn" data-tab="monthly">📅 תצוגה חודשית</button>
-            <button class="tab-btn" data-tab="dashboard">📈 דשבורד</button>
+            <button class="tab-btn" data-tab="dashboard">📈 סיכום</button>
+            <button class="tab-btn" data-tab="settings">⚙️ הגדרות</button>
         </nav>
 
         <!-- Tab Content -->
@@ -66,8 +62,8 @@
                         </div>
                         <div style="display: flex; gap: 10px;">
                             <button id="addTransactionBtn" class="btn btn-primary">+ הוסף עסקה</button>
-                            <button id="importCsvBtn" class="btn btn-secondary">📄 ייבוא CSV</button>
-                            <input type="file" id="importCsvFile" accept=".csv" style="display: none;">
+                            <button id="importCsvBtn" class="btn btn-secondary" title="ניתן לטעון קובץ Excel (.xlsx) או CSV">📄 ייבוא דף חשבון</button>
+                            <input type="file" id="importCsvFile" accept=".csv,.xlsx" style="display: none;">
                         </div>
                     </div>
                 </div>
@@ -141,12 +137,29 @@
                 </div>
             </div>
 
-            <!-- Mapping Tab -->
-            <div id="mapping" class="tab-panel">
+            <!-- Settings Tab -->
+            <div id="settings" class="tab-panel">
                 <div class="panel-header">
-                    <h2>🗺️ מיפוי קטגוריות</h2>
-                    <button id="addMappingBtn" class="btn btn-primary">+ הוסף מיפוי</button>
+                    <h2>⚙️ הגדרות מערכת</h2>
                 </div>
+
+                <!-- Settings Actions -->
+                <div class="settings-section">
+                    <h3 style="color: #1f4e79; margin-bottom: 15px;">📦 ייבוא וייצוא נתונים</h3>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 30px;">
+                        <button id="exportMappingsBtn" class="btn btn-secondary">📋 ייצוא מיפויים</button>
+                        <button id="exportBtn" class="btn btn-secondary">📥 ייצוא נתונים</button>
+                        <button id="importBtn" class="btn btn-secondary">📤 ייבוא נתונים</button>
+                        <input type="file" id="importFile" accept=".json" style="display: none;">
+                    </div>
+                </div>
+
+                <!-- Mapping Section -->
+                <div class="settings-section">
+                    <div class="panel-header">
+                        <h3 style="color: #1f4e79;">🗺️ מיפוי קטגוריות</h3>
+                        <button id="addMappingBtn" class="btn btn-primary">+ הוסף מיפוי</button>
+                    </div>
 
                 <!-- Add Mapping Form -->
                 <div id="mappingForm" class="form-card" style="display: none;">
@@ -207,6 +220,7 @@
                             <!-- Mappings will be populated here -->
                         </tbody>
                     </table>
+                </div>
                 </div>
             </div>
 
@@ -283,7 +297,7 @@
             <!-- Dashboard Tab -->
             <div id="dashboard" class="tab-panel">
                 <div class="panel-header">
-                    <h2>📈 דשבורד כללי</h2>
+                    <h2>📈 סיכום כללי</h2>
                     <div class="dashboard-controls">
                         <div class="month-selector">
                             <label for="dashboardMonth">חודש נבחר:</label>
@@ -302,6 +316,7 @@
                                 <option value="12">דצמבר</option>
                             </select>
                         </div>
+                        <button id="exportDashboardReportBtn" class="btn btn-primary" title="פתח דוח סיכום כללי בחלון חדש להדפסה (Ctrl+P להדפסה, Esc לסגירה)">📄 הצג דוח סיכום להדפסה</button>
                     </div>
                 </div>
 
