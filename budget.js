@@ -6,6 +6,7 @@ class BudgetSystem {
         this.incomeItems = new Set();
         this.categories = [];
         this.openingBalances = new Map(); // Store opening balance per month per year
+        this.manualOpeningBalances = new Set(); // Track which balances are manually set
         this.monthlyNotes = new Map(); // Store monthly notes per year
         this.currentMonth = new Date().getMonth() + 1;
         this.currentYear = new Date().getFullYear();
@@ -1475,16 +1476,18 @@ class BudgetSystem {
             .filter(t => t.type === 'transfer')
             .reduce((sum, t) => sum + t.amount, 0);
         
-        // Get opening balance for this month, auto-set from previous month if not set
-        let openingBalance = this.openingBalances.get(`${this.currentYear}-${month}`);
-        if (openingBalance === undefined && month !== 1) {
-            // Auto-set from previous month
+        // Get opening balance for this month, auto-set from previous month if not manually set
+        const key = `${this.currentYear}-${month}`;
+        let openingBalance = this.openingBalances.get(key);
+        if ((openingBalance === undefined || !this.manualOpeningBalances.has(key)) && month !== 1) {
+            // Auto-set from previous month (unless manually overridden)
             const prevMonth = month === 1 ? 12 : month - 1;
             const prevYear = month === 1 ? this.currentYear - 1 : this.currentYear;
             const autoBalance = this.calculateClosingBalance(prevMonth, prevYear);
             if (autoBalance !== 0) {
                 openingBalance = autoBalance;
-                this.openingBalances.set(`${this.currentYear}-${month}`, autoBalance);
+                this.openingBalances.set(key, autoBalance);
+                // Don't add to manualOpeningBalances - this is automatic
                 this.saveData();
             } else {
                 openingBalance = 0;
@@ -1545,20 +1548,15 @@ class BudgetSystem {
     showOpeningBalanceModal(month) {
         const monthName = this.getMonthName(month);
         
-        // Auto-set balance from previous month if not manually set
-        let currentBalance = this.openingBalances.get(`${this.currentYear}-${month}`);
+        // Get current balance or calculate from previous month
+        const key = `${this.currentYear}-${month}`;
+        let currentBalance = this.openingBalances.get(key);
         if (currentBalance === undefined && month !== 1) {
-            // Auto-calculate from previous month
+            // Calculate from previous month but don't save yet
             const prevMonth = month === 1 ? 12 : month - 1;
             const prevYear = month === 1 ? this.currentYear - 1 : this.currentYear;
             const autoBalance = this.calculateClosingBalance(prevMonth, prevYear);
-            if (autoBalance !== 0) {
-                currentBalance = autoBalance;
-                this.openingBalances.set(`${this.currentYear}-${month}`, autoBalance);
-                this.saveData();
-            } else {
-                currentBalance = 0;
-            }
+            currentBalance = autoBalance !== 0 ? autoBalance : 0;
         } else if (currentBalance === undefined) {
             currentBalance = 0;
         }
@@ -1599,7 +1597,9 @@ class BudgetSystem {
         
         document.getElementById('saveBalanceBtn').addEventListener('click', () => {
             const newBalance = parseFloat(document.getElementById('openingBalanceInput').value) || 0;
-            this.openingBalances.set(`${this.currentYear}-${month}`, newBalance);
+            const key = `${this.currentYear}-${month}`;
+            this.openingBalances.set(key, newBalance);
+            this.manualOpeningBalances.add(key); // Mark as manually set
             this.saveData();
             this.updateBalanceSummary(month);
             document.body.removeChild(modal);
@@ -1691,16 +1691,22 @@ class BudgetSystem {
 
     // Calculate closing balance for a month
     calculateClosingBalance(month, year = this.currentYear) {
-        const monthlyTransactions = this.transactions.filter(t => t.month === month && t.year === year);
+        const monthlyTransactions = this.transactions.filter(t => {
+            const transactionYear = t.year || year;
+            return t.month === month && transactionYear === year;
+        });
         const income = monthlyTransactions
             .filter(t => t.type === 'income')
             .reduce((sum, t) => sum + t.amount, 0);
         const expenses = monthlyTransactions
             .filter(t => t.type === 'expense')
             .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+        const transfers = monthlyTransactions
+            .filter(t => t.type === 'transfer')
+            .reduce((sum, t) => sum + t.amount, 0);
         const openingBalance = this.openingBalances.get(`${year}-${month}`) || 0;
         
-        return openingBalance + income - expenses;
+        return openingBalance + income - expenses + transfers;
     }
 
     updateCategorySummary(month) {
@@ -1979,6 +1985,7 @@ class BudgetSystem {
             incomeItems: Array.from(this.incomeItems),
             categories: this.categories,
             openingBalances: Array.from(this.openingBalances.entries()),
+            manualOpeningBalances: Array.from(this.manualOpeningBalances),
             monthlyNotes: this.monthlyNotes ? Array.from(this.monthlyNotes.entries()) : [],
             lastSelectedMonth: this.lastSelectedMonth,
             lastSelectedYear: this.lastSelectedYear,
@@ -2212,6 +2219,9 @@ class BudgetSystem {
                 }
                 if (data.openingBalances) {
                     this.openingBalances = new Map(data.openingBalances);
+                }
+                if (data.manualOpeningBalances) {
+                    this.manualOpeningBalances = new Set(data.manualOpeningBalances);
                 }
                 if (data.monthlyNotes) {
                     this.monthlyNotes = new Map(data.monthlyNotes);
@@ -2801,6 +2811,9 @@ class BudgetSystem {
                     }
                     if (data.openingBalances) {
                         this.openingBalances = new Map(data.openingBalances);
+                    }
+                    if (data.manualOpeningBalances) {
+                        this.manualOpeningBalances = new Set(data.manualOpeningBalances);
                     }
                     if (data.monthlyNotes) {
                         this.monthlyNotes = new Map(data.monthlyNotes);
