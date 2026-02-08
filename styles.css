@@ -1254,9 +1254,21 @@ body {
     gap: 10px;
 }
 
+/* Regular check payment items (שיק without parentheses) - Yellow background */
 .check-payment-item {
     background: #fff8e1;
     border: 2px solid #ff9800;
+    border-radius: 8px;
+    padding: 15px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* Imported check items (שיק) with parentheses - Purple background */
+.imported-check-item {
+    background: #f3e5f5;
+    border: 2px solid #9c27b0;
     border-radius: 8px;
     padding: 15px;
     display: flex;
@@ -1274,6 +1286,11 @@ body {
     font-size: 1.1rem;
 }
 
+/* Purple text for imported check items */
+.imported-check-item .check-payment-number {
+    color: #6a1b9a;
+}
+
 .check-payment-payee {
     color: #666;
     font-size: 0.9rem;
@@ -1284,6 +1301,11 @@ body {
     font-weight: 600;
     color: #d32f2f;
     font-size: 1.1rem;
+}
+
+/* Purple amount for imported check items */
+.imported-check-item .check-payment-amount {
+    color: #6a1b9a;
 }
 
 .check-payment-note {

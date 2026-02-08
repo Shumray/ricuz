@@ -2,6 +2,7 @@
 class BudgetSystem {
     constructor() {
         this.transactions = [];
+        this.importedCheckItems = []; // Store check items from imports that shouldn't be included in calculations
         this.mappings = new Map(); // item -> { category, includeInMonthlyExpenses }
         this.incomeItems = new Set();
         this.categories = [];
@@ -261,6 +262,19 @@ class BudgetSystem {
         // Check payment functionality
         this.setupCheckPayment();
 
+        // Handle mutual exclusion between regular check and special check item
+        document.getElementById('isCheck').addEventListener('change', (e) => {
+            if (e.target.checked) {
+                document.getElementById('isSpecialCheckItem').checked = false;
+            }
+        });
+
+        document.getElementById('isSpecialCheckItem').addEventListener('change', (e) => {
+            if (e.target.checked) {
+                document.getElementById('isCheck').checked = false;
+            }
+        });
+
         // Mapping form
         document.getElementById('addMappingBtn').addEventListener('click', () => {
             this.showMappingForm();
@@ -389,6 +403,9 @@ class BudgetSystem {
             const isCheck = editData.paymentMethod === 'check';
             document.getElementById('isCheck').checked = isCheck;
             
+            // Special check item is not editable from regular transactions
+            document.getElementById('isSpecialCheckItem').checked = false;
+
             // Store check details
             if (editData.checkDetails) {
                 this.currentCheckData = editData.checkDetails;
@@ -410,6 +427,7 @@ class BudgetSystem {
         } else {
             // New transaction mode
             document.getElementById('isCheck').checked = false;
+            document.getElementById('isSpecialCheckItem').checked = false;
             delete this.currentCheckData;
             this.updateCheckInfoDisplay();
             
@@ -429,6 +447,7 @@ class BudgetSystem {
         document.getElementById('transactionForm').style.display = 'none';
         document.getElementById('newTransactionForm').reset();
         document.getElementById('isCheck').checked = false;
+        document.getElementById('isSpecialCheckItem').checked = false;
         // Don't reset color - it will be set from lastSelectedColor when opening next time
         delete this.currentCheckData;
         
@@ -459,12 +478,38 @@ class BudgetSystem {
             amount: parseFloat(document.getElementById('amount').value),
             note: document.getElementById('note').value.trim(),
             isCheck: document.getElementById('isCheck').checked,
+            isSpecialCheckItem: document.getElementById('isSpecialCheckItem').checked,
             color: document.getElementById('transactionColor').value
         };
 
         // Validate data
         if (!formData.month || !formData.item || isNaN(formData.amount)) {
             alert('אנא מלא את כל השדות החובה');
+            return;
+        }
+
+        // Handle special check item (שיק)
+        if (formData.isSpecialCheckItem) {
+            // Create imported check item
+            const monthName = this.getMonthName(formData.month);
+            const checkItem = {
+                id: Date.now() + Math.random(),
+                item: formData.item,
+                amount: -Math.abs(formData.amount), // Always negative for expense
+                month: formData.month,
+                year: this.currentYear,
+                note: formData.note,
+                checkNumber: '',
+                payeeName: '',
+                color: 'purple' // Special color for imported check items
+            };
+
+            this.importedCheckItems.push(checkItem);
+            this.saveData();
+            this.updateImportedCheckItemsSummary();
+            this.hideTransactionForm();
+            this.updateDisplay();
+            this.showNotification('פריט שיק מיוחד (שיק) נוסף בהצלחה! 💜', 'success');
             return;
         }
 
@@ -1148,6 +1193,9 @@ class BudgetSystem {
         
         // Update color summary
         this.updateColorSummary(currentYearTransactions);
+
+        // Update imported check items summary
+        this.updateImportedCheckItemsSummary();
     }
     
     // Get color code from color name
@@ -1334,6 +1382,234 @@ class BudgetSystem {
         summaryContent.innerHTML = htmlContent;
     }
 
+    // Update imported check items summary
+    updateImportedCheckItemsSummary() {
+        const container = document.getElementById('importedCheckItemsList');
+        const summaryCard = document.getElementById('importedCheckItemsSummary');
+
+        if (!container || !summaryCard) return;
+
+        // Get selected month filter from data entry tab
+        const selectedMonth = document.getElementById('dataEntryMonthSelect')?.value;
+
+        // Filter check items by current year and selected month
+        let filteredCheckItems = this.importedCheckItems.filter(item => {
+            const itemYear = item.year || this.currentYear;
+            if (itemYear !== this.currentYear) return false;
+
+            // Filter by month if specific month is selected
+            if (selectedMonth && selectedMonth !== 'all') {
+                return item.month === parseInt(selectedMonth);
+            }
+            return true;
+        });
+
+        if (filteredCheckItems.length === 0) {
+            summaryCard.style.display = 'none';
+            return;
+        }
+
+        summaryCard.style.display = 'block';
+
+        // Update the title with month name
+        const titleElement = summaryCard.querySelector('h3');
+        if (titleElement && selectedMonth && selectedMonth !== 'all') {
+            const monthName = this.getMonthName(parseInt(selectedMonth));
+            titleElement.textContent = `🏦 פרטי צ׳יק הוצאות חודש ${monthName}`;
+        } else {
+            titleElement.textContent = '🏦 פרטי צ׳יק הוצאות';
+        }
+
+        container.innerHTML = '';
+
+        filteredCheckItems.forEach(checkItem => {
+            const checkNum = checkItem.checkNumber || '(לא הוזן)';
+            const payee = checkItem.payeeName || '(לא הוזן)';
+
+            const item = document.createElement('div');
+            item.className = 'imported-check-item';
+            item.innerHTML = `
+                <div class="check-payment-details">
+                    <div class="check-payment-number">צ'יק מספר: ${checkNum}</div>
+                    <div class="check-payment-payee">מוטב: ${payee}</div>
+                    <div style="margin-top: 5px;">
+                        <strong>עבור:</strong> ${checkItem.item}
+                        ${checkItem.note ? `<div class="check-payment-note">הערה: ${checkItem.note}</div>` : ''}
+                    </div>
+                    <div style="font-size: 0.85rem; color: #666; margin-top: 5px;">
+                        ${this.getMonthName(checkItem.month)} ${checkItem.year}
+                    </div>
+                </div>
+                <div class="check-payment-amount" style="padding-left: 20px;">${this.formatCurrency(checkItem.amount)}</div>
+                <div style="display: flex; gap: 5px; align-items: center;">
+                    <button onclick="budgetSystem.editImportedCheckItem(${checkItem.id})" 
+                            class="btn-edit" 
+                            title="ערוך פרטי צ'יק"
+                            style="padding: 5px 10px; background: #2196f3; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9rem;">
+                        ✏️
+                    </button>
+                    <button onclick="budgetSystem.deleteImportedCheckItem(${checkItem.id})" 
+                            class="btn-delete" 
+                            title="מחק פריט שיק"
+                            style="padding: 5px 10px; background: #f44336; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9rem;">
+                        🗑️
+                    </button>
+                </div>
+            `;
+            container.appendChild(item);
+        });
+
+        // Add total if more than one check item
+        if (filteredCheckItems.length > 1) {
+            const totalAmount = filteredCheckItems.reduce((sum, item) => sum + Math.abs(item.amount), 0);
+            const totalItem = document.createElement('div');
+            totalItem.style.cssText = `
+                background: #f5f5f5;
+                border: 2px solid #666;
+                border-radius: 8px;
+                padding: 10px 15px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                font-weight: 600;
+                margin-top: 10px;
+            `;
+            totalItem.innerHTML = `
+                <span>סה"כ פריטי שיק (${filteredCheckItems.length} פריטים):</span>
+                <span style="color: #d32f2f; font-size: 1.1rem;">${this.formatCurrency(totalAmount)}</span>
+            `;
+            container.appendChild(totalItem);
+        }
+    }
+
+    // Delete imported check item
+    deleteImportedCheckItem(itemId) {
+        if (!confirm('האם למחוק את פריט השיק הזה?')) {
+            return;
+        }
+
+        const index = this.importedCheckItems.findIndex(item => item.id === itemId);
+        if (index !== -1) {
+            this.importedCheckItems.splice(index, 1);
+            this.saveData();
+            this.updateImportedCheckItemsSummary();
+            this.showNotification('פריט שיק נמחק בהצלחה', 'success');
+        }
+    }
+
+    // Edit imported check item
+    editImportedCheckItem(itemId) {
+        const checkItem = this.importedCheckItems.find(item => item.id === itemId);
+        if (!checkItem) return;
+
+        // Create modal for editing
+        const modal = document.createElement('div');
+        modal.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+        `;
+
+        const form = document.createElement('div');
+        form.style.cssText = `
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            max-width: 500px;
+            width: 90%;
+        `;
+
+        form.innerHTML = `
+            <h3 style="margin: 0 0 20px 0; color: #1f4e79; text-align: right;">✏️ עריכת פרטי צ'יק</h3>
+            
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: 600; text-align: right;">מספר צ'יק:</label>
+                <input type="text" id="editCheckNumber" value="${checkItem.checkNumber || ''}" 
+                       placeholder="הזן מספר צ'יק"
+                       style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; text-align: right; font-size: 1rem;">
+            </div>
+
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: 600; text-align: right;">שם המוטב:</label>
+                <input type="text" id="editPayeeName" value="${checkItem.payeeName || ''}" 
+                       placeholder="הזן שם מוטב"
+                       style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; text-align: right; font-size: 1rem;">
+            </div>
+
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: 600; text-align: right;">עבור:</label>
+                <input type="text" id="editItemName" value="${checkItem.item}" 
+                       placeholder="עבור מה הצ'יק"
+                       style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; text-align: right; font-size: 1rem;">
+            </div>
+
+            <div style="margin-bottom: 20px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: 600; text-align: right;">הערה (אופציונלי):</label>
+                <textarea id="editNote" 
+                          placeholder="הוסף הערה"
+                          style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; text-align: right; font-size: 1rem; min-height: 60px;">${checkItem.note || ''}</textarea>
+            </div>
+
+            <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                <button id="cancelEditBtn" 
+                        style="padding: 10px 20px; background: #999; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 1rem;">
+                    ❌ ביטול
+                </button>
+                <button id="saveEditBtn" 
+                        style="padding: 10px 20px; background: #4caf50; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 1rem;">
+                    💾 שמור
+                </button>
+            </div>
+        `;
+
+        modal.appendChild(form);
+        document.body.appendChild(modal);
+
+        // Cancel button
+        document.getElementById('cancelEditBtn').onclick = () => {
+            document.body.removeChild(modal);
+        };
+
+        // Save button
+        document.getElementById('saveEditBtn').onclick = () => {
+            const checkNumber = document.getElementById('editCheckNumber').value.trim();
+            const payeeName = document.getElementById('editPayeeName').value.trim();
+            const itemName = document.getElementById('editItemName').value.trim();
+            const note = document.getElementById('editNote').value.trim();
+
+            if (!itemName) {
+                alert('נא למלא את השדה "עבור"');
+                return;
+            }
+
+            // Update the check item
+            checkItem.checkNumber = checkNumber;
+            checkItem.payeeName = payeeName;
+            checkItem.item = itemName;
+            checkItem.note = note;
+
+            this.saveData();
+            this.updateImportedCheckItemsSummary();
+            document.body.removeChild(modal);
+            this.showNotification('פרטי הצ\'יק עודכנו בהצלחה', 'success');
+        };
+
+        // Close on background click
+        modal.onclick = (e) => {
+            if (e.target === modal) {
+                document.body.removeChild(modal);
+            }
+        };
+    }
+
     // Mapping management
     showMappingForm(editData = null) {
         document.getElementById('mappingForm').style.display = 'block';
@@ -1496,6 +1772,7 @@ class BudgetSystem {
         this.updateActualExpensesSummary(selectedMonth);
         this.updateMonthlyTransactions(selectedMonth);
         this.updateCheckPaymentsSummary(selectedMonth);
+        this.updateImportedCheckItemsMonthly(selectedMonth);
     }
 
     // Update balance summary table
@@ -2027,6 +2304,7 @@ class BudgetSystem {
     saveData() {
         const data = {
             transactions: this.transactions,
+            importedCheckItems: this.importedCheckItems, // Save imported check items
             mappings: Array.from(this.mappings.entries()),
             incomeItems: Array.from(this.incomeItems),
             categories: this.categories,
@@ -2074,7 +2352,8 @@ class BudgetSystem {
                 }
 
                 this.transactions = data.transactions || [];
-                
+                this.importedCheckItems = data.importedCheckItems || []; // Load imported check items
+
                 // Update old transactions - fix data types and add missing fields
                 let dataUpdated = false;
                 this.transactions.forEach(transaction => {
@@ -2372,6 +2651,7 @@ class BudgetSystem {
                 // Add transactions
                 let addedCount = 0;
                 let skippedCount = 0;
+                let checkItemsCount = 0;
                 const importedMonth = result.transactions.length > 0 ? result.transactions[0].month : null;
                 
                 result.transactions.forEach(trans => {
@@ -2385,10 +2665,21 @@ class BudgetSystem {
                     }
                 });
 
+                // Add check items separately
+                if (result.checkItems && result.checkItems.length > 0) {
+                    result.checkItems.forEach(checkItem => {
+                        this.importedCheckItems.push(checkItem);
+                        checkItemsCount++;
+                    });
+                }
+
                 this.saveData();
                 
                 // Show detailed notification
                 let message = `✅ ${addedCount} עסקאות נוספו בהצלחה`;
+                if (checkItemsCount > 0) {
+                    message += `\n🏦 ${checkItemsCount} פריטי שיק נוספו`;
+                }
                 if (skippedCount > 0) {
                     message += `\n⚠️ ${skippedCount} עסקאות כפולות דולגו`;
                 }
@@ -2597,6 +2888,7 @@ class BudgetSystem {
                 // Add transactions
                 let addedCount = 0;
                 let skippedCount = 0;
+                let checkItemsCount = 0;
                 const importedMonth = result.transactions.length > 0 ? result.transactions[0].month : null;
                 
                 result.transactions.forEach(trans => {
@@ -2608,9 +2900,20 @@ class BudgetSystem {
                     }
                 });
                 
+                // Add check items separately
+                if (result.checkItems && result.checkItems.length > 0) {
+                    result.checkItems.forEach(checkItem => {
+                        this.importedCheckItems.push(checkItem);
+                        checkItemsCount++;
+                    });
+                }
+
                 this.saveData();
                 
                 let message = `✅ ${addedCount} עסקאות נוספו מקובץ Excel`;
+                if (checkItemsCount > 0) {
+                    message += `\n🏦 ${checkItemsCount} פריטי שיק נוספו`;
+                }
                 if (skippedCount > 0) {
                     message += `\n⚠️ ${skippedCount} עסקאות כפולות דולגו`;
                 }
@@ -2684,6 +2987,7 @@ class BudgetSystem {
         };
 
         const transactions = [];
+        const checkItems = []; // Separate array for (שיק) items
         const months = new Set();
         const years = new Set();
 
@@ -2703,6 +3007,9 @@ class BudgetSystem {
             const item = values[2].trim().replace(/["\u0022\u05F4\u05F3]/g, '');
             const debit = values[3].trim(); // חובה (הוצאה)
             const credit = values[4].trim(); // זכות (הכנסה)
+
+            // Check if this is a (שיק) item - item name is exactly "(שיק)"
+            const isCheckItem = item === '(שיק)';
 
             // Convert month name to number
             const month = monthMap[monthName];
@@ -2735,6 +3042,35 @@ class BudgetSystem {
                     success: false,
                     error: `סכום לא תקין בשורה ${i + 1}: "${debit || credit}"`
                 };
+            }
+
+            // If this is a (שיק) item, add to checkItems array instead
+            if (isCheckItem) {
+                // Convert month number to Hebrew name for default item name
+                const monthNumberStr = month.padStart(2, '0');
+                const hebrewMonthNames = {
+                    '01': 'ינואר', '02': 'פברואר', '03': 'מרץ', '04': 'אפריל',
+                    '05': 'מאי', '06': 'יוני', '07': 'יולי', '08': 'אוגוסט',
+                    '09': 'ספטמבר', '10': 'אוקטובר', '11': 'נובמבר', '12': 'דצמבר'
+                };
+                const monthNameForItem = hebrewMonthNames[monthNumberStr] || monthName;
+
+                checkItems.push({
+                    id: Date.now() + Math.random(),
+                    item: `הוצאות חודש ${monthNameForItem}`,
+                    amount: amount,
+                    month: parseInt(month),
+                    year: parseInt(year),
+                    note: '',
+                    checkNumber: '',
+                    payeeName: '',
+                    color: 'yellow'
+                });
+
+                // Small delay to ensure unique IDs
+                const now = Date.now();
+                while (Date.now() === now) { /* wait */ }
+                continue; // Skip adding to regular transactions
             }
 
             // Determine category
@@ -2800,7 +3136,8 @@ class BudgetSystem {
 
         return {
             success: true,
-            transactions: transactions
+            transactions: transactions,
+            checkItems: checkItems
         };
     }
 
@@ -3202,6 +3539,86 @@ class BudgetSystem {
             </tbody>
         </table>
     </div>
+
+    ${(() => {
+        // Get check payments from regular transactions
+        const checkPayments = monthlyTransactions.filter(t => t.paymentMethod === 'check');
+        if (checkPayments.length === 0) return '';
+        
+        const totalCheckAmount = checkPayments.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+        
+        return `
+    <div class="summary-card">
+        <h3>🏦 תשלומי צ'יקים בחודש</h3>
+        <table class="balance-table">
+            <thead>
+                <tr>
+                    <th>פריט</th>
+                    <th>צ'יק מספר</th>
+                    <th>מוטב</th>
+                    <th>סכום</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${checkPayments.map(t => `
+                <tr>
+                    <td>${t.item}</td>
+                    <td>${t.checkDetails?.checkNumber || '(לא צוין)'}</td>
+                    <td>${t.checkDetails?.payeeName || '(לא צוין)'}</td>
+                    <td class="negative">${this.formatCurrency(t.amount)}</td>
+                </tr>`).join('')}
+                ${checkPayments.length > 1 ? `
+                <tr style="background: #f5f5f5; font-weight: 600;">
+                    <td colspan="3">סה"כ תשלומי צ'יקים (${checkPayments.length} צ'יקים)</td>
+                    <td class="negative">${this.formatCurrency(totalCheckAmount)}</td>
+                </tr>` : ''}
+            </tbody>
+        </table>
+    </div>`;
+    })()}
+
+    ${(() => {
+        // Get imported check items for this month
+        const importedChecks = this.importedCheckItems.filter(item => {
+            const itemYear = item.year || this.currentYear;
+            return item.month === month && itemYear === this.currentYear;
+        });
+        
+        if (importedChecks.length === 0) return '';
+        
+        const totalImportedAmount = importedChecks.reduce((sum, item) => sum + Math.abs(item.amount), 0);
+        
+        return `
+    <div class="summary-card" style="background: #f3e5f5; border-color: #9c27b0;">
+        <h3 style="color: #6a1b9a;">🏦 פרטי צ'יק הוצאות חודש ${monthName}</h3>
+        <table class="balance-table">
+            <thead>
+                <tr>
+                    <th>צ'יק מספר</th>
+                    <th>מוטב</th>
+                    <th>עבור</th>
+                    <th>הערה</th>
+                    <th>סכום</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${importedChecks.map(item => `
+                <tr>
+                    <td>${item.checkNumber || '(לא הוזן)'}</td>
+                    <td>${item.payeeName || '(לא הוזן)'}</td>
+                    <td>${item.item}</td>
+                    <td>${item.note || ''}</td>
+                    <td style="color: #6a1b9a; font-weight: 600;">${this.formatCurrency(item.amount)}</td>
+                </tr>`).join('')}
+                ${importedChecks.length > 1 ? `
+                <tr style="background: #e1bee7; font-weight: 600;">
+                    <td colspan="4">סה"כ פריטי שיק (${importedChecks.length} פריטים)</td>
+                    <td style="color: #6a1b9a;">${this.formatCurrency(totalImportedAmount)}</td>
+                </tr>` : ''}
+            </tbody>
+        </table>
+    </div>`;
+    })()}
 </body>
 </html>`;
 
@@ -3813,6 +4230,79 @@ class BudgetSystem {
             container.appendChild(totalItem);
         }
     }
+
+    // Update imported check items for monthly view
+    updateImportedCheckItemsMonthly(month) {
+        const container = document.getElementById('importedCheckItemsMonthlyList');
+        const summaryCard = document.getElementById('importedCheckItemsMonthly');
+
+        if (!container || !summaryCard) return;
+
+        // Filter check items by current year and selected month
+        const filteredCheckItems = this.importedCheckItems.filter(item => {
+            const itemYear = item.year || this.currentYear;
+            return item.month === month && itemYear === this.currentYear;
+        });
+
+        if (filteredCheckItems.length === 0) {
+            summaryCard.style.display = 'none';
+            return;
+        }
+
+        summaryCard.style.display = 'block';
+
+        // Update the title with month name
+        const titleElement = summaryCard.querySelector('h3');
+        if (titleElement) {
+            const monthName = this.getMonthName(month);
+            titleElement.textContent = `🏦 פרטי צ׳יק הוצאות חודש ${monthName}`;
+        }
+
+        container.innerHTML = '';
+
+        filteredCheckItems.forEach(checkItem => {
+            const checkNum = checkItem.checkNumber || '(לא הוזן)';
+            const payee = checkItem.payeeName || '(לא הוזן)';
+
+            const item = document.createElement('div');
+            item.className = 'imported-check-item';
+            item.innerHTML = `
+                <div class="check-payment-details">
+                    <div class="check-payment-number">צ'יק מספר: ${checkNum}</div>
+                    <div class="check-payment-payee">מוטב: ${payee}</div>
+                    <div style="margin-top: 5px;">
+                        <strong>עבור:</strong> ${checkItem.item}
+                        ${checkItem.note ? `<div class="check-payment-note">הערה: ${checkItem.note}</div>` : ''}
+                    </div>
+                </div>
+                <div class="check-payment-amount">${this.formatCurrency(checkItem.amount)}</div>
+            `;
+            container.appendChild(item);
+        });
+
+        // Add total if more than one check item
+        if (filteredCheckItems.length > 1) {
+            const totalAmount = filteredCheckItems.reduce((sum, item) => sum + Math.abs(item.amount), 0);
+            const totalItem = document.createElement('div');
+            totalItem.style.cssText = `
+                background: #f5f5f5;
+                border: 2px solid #666;
+                border-radius: 8px;
+                padding: 10px 15px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                font-weight: 600;
+                margin-top: 10px;
+            `;
+            totalItem.innerHTML = `
+                <span>סה"כ פריטי שיק (${filteredCheckItems.length} פריטים):</span>
+                <span style="color: #d32f2f; font-size: 1.1rem;">${this.formatCurrency(totalAmount)}</span>
+            `;
+            container.appendChild(totalItem);
+        }
+    }
+
 
     // Update all displays
     updateDisplay() {
