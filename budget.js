@@ -146,6 +146,7 @@ class BudgetSystem {
             ['כרטיסיה', 'נסיעות', true],
             ['מונית', 'נסיעות', true],
             ['רב קו', 'נסיעות', true],
+            ['נסיעות', 'נסיעות', true],
             ['עמלת בנק', 'עמלת בנק', false],
             ['ע.מפעולות-ישיר', 'עמלת בנק', false],
             ['רופא', 'טיפול רפואי', true],
@@ -1259,7 +1260,12 @@ class BudgetSystem {
         // Check if any color has transactions
         const hasColors = Object.values(colorTotals).some(v => v !== 0);
         
-        if (!hasColors) {
+        // Check if a specific month is selected
+        const selectedMonth = document.getElementById('dataEntryMonthSelect')?.value;
+        const hasSelectedMonth = selectedMonth && selectedMonth !== 'all';
+        
+        // Hide summary only if no colors AND no specific month selected
+        if (!hasColors && !hasSelectedMonth) {
             summaryDiv.style.display = 'none';
             return;
         }
@@ -1273,7 +1279,7 @@ class BudgetSystem {
             'pink': '🟪 ורוד'
         };
         
-        summaryContent.innerHTML = Object.entries(colorTotals)
+        let htmlContent = Object.entries(colorTotals)
             .filter(([_, total]) => total !== 0)
             .map(([color, total]) => {
                 const count = colorCounts[color];
@@ -1286,6 +1292,46 @@ class BudgetSystem {
                     </div>
                 `;
             }).join('');
+        
+        // Add total summary of all colors
+        const totalAllColors = Object.values(colorTotals).reduce((sum, val) => sum + val, 0);
+        const totalCount = Object.values(colorCounts).reduce((sum, val) => sum + val, 0);
+        
+        if (totalAllColors !== 0) {
+            htmlContent += `
+                <div style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #f5f5f5; border-radius: 5px; border-right: 4px solid #666; margin-top: 8px; font-weight: 600;">
+                    <span style="font-weight: 600;">סה"כ צבעים (${totalCount}):</span>
+                    <span style="font-size: 1.1rem; font-weight: 700; color: ${totalAllColors >= 0 ? '#4caf50' : '#f44336'};">
+                        ${this.formatCurrency(totalAllColors)}
+                    </span>
+                </div>
+            `;
+        }
+        
+        // Add closing balance if a specific month is selected
+        if (hasSelectedMonth) {
+            const monthNumber = parseInt(selectedMonth);
+            const monthName = this.getMonthName(monthNumber);
+            
+            // Calculate previous month's closing balance
+            const prevMonth = monthNumber === 1 ? 12 : monthNumber - 1;
+            const prevYear = monthNumber === 1 ? this.currentYear - 1 : this.currentYear;
+            const prevClosingBalance = this.calculateClosingBalance(prevMonth, prevYear);
+            
+            // Add colored items total to previous month's closing balance
+            const balanceByColors = prevClosingBalance + totalAllColors;
+            
+            htmlContent += `
+                <div style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #e3f2fd; border-radius: 5px; border-right: 4px solid #1976d2; margin-top: 8px; font-weight: 600;">
+                    <span style="font-weight: 600;">יתרת עו"ש לחודש ${monthName} לפי סימון צבעים:</span>
+                    <span style="font-size: 1.1rem; font-weight: 700; color: ${balanceByColors >= 0 ? '#1976d2' : '#f44336'};">
+                        ${this.formatCurrency(balanceByColors)}
+                    </span>
+                </div>
+            `;
+        }
+        
+        summaryContent.innerHTML = htmlContent;
     }
 
     // Mapping management
@@ -2113,6 +2159,7 @@ class BudgetSystem {
                         ['כרטיסיה', 'נסיעות', true],
                         ['מונית', 'נסיעות', true],
                         ['רב קו', 'נסיעות', true],
+                        ['נסיעות', 'נסיעות', true],
                         ['עמלת בנק', 'עמלת בנק', false],
                         ['ע.מפעולות-ישיר', 'עמלת בנק', false],
                         ['רופא', 'טיפול רפואי', true],
@@ -2842,7 +2889,10 @@ class BudgetSystem {
     // Export monthly report
     exportMonthlyReport(month) {
         const monthName = this.getMonthName(month);
-        const monthlyTransactions = this.transactions.filter(t => t.month === month);
+        const monthlyTransactions = this.transactions.filter(t => {
+            const transactionYear = t.year || this.currentYear;
+            return t.month === month && transactionYear === this.currentYear;
+        });
         
         // Get user data for report
         const userData = this.getUserData();
@@ -2861,7 +2911,7 @@ class BudgetSystem {
             .filter(t => t.type === 'transfer')
             .reduce((sum, t) => sum + t.amount, 0);
         
-        const openingBalance = this.openingBalances.get(month) || 0;
+        const openingBalance = this.openingBalances.get(`${this.currentYear}-${month}`) || 0;
         const netChange = income - expenses + transfers;
         const closingBalance = openingBalance + netChange;
         const monthlyNotes = this.getMonthlyNotes(month) || '';
@@ -3061,8 +3111,8 @@ class BudgetSystem {
     
     <div class="report-header">
         <h1>דוח חודשי מפורט</h1>
-        <h2>${monthName} ${new Date().getFullYear()}</h2>
-        <p>נוצר בתאריך: ${new Date().toLocaleDateString('he-IL')}</p>
+        <h2>${monthName} ${this.currentYear}</h2>
+        <p>נוצר בתאריך: ${new Date(this.currentYear, new Date().getMonth(), new Date().getDate()).toLocaleDateString('he-IL')}</p>
         <p style="font-size: 0.9rem; opacity: 0.9;">מפיק הדוח: ${reportProducer}</p>
     </div>
 
@@ -3451,7 +3501,7 @@ class BudgetSystem {
     <div class="report-header">
         <h1>📈 דוח סיכום כללי</h1>
         <h2>שנת ${this.currentYear}</h2>
-        <p>נוצר בתאריך: ${new Date().toLocaleDateString('he-IL')}</p>
+        <p>נוצר בתאריך: ${new Date(this.currentYear, new Date().getMonth(), new Date().getDate()).toLocaleDateString('he-IL')}</p>
         <p style="font-size: 0.9rem; opacity: 0.9;">מפיק הדוח: ${reportProducer}</p>
     </div>
 
