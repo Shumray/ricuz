@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🔍 בדיקת קובץ Excel - מרץ 2025</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" integrity="sha512-r22gChDnGvBylk90+2e/ycr+equG0CPaoP7F09mZR9dPNZlV43Q3Iw7YSn8WP9rbI9eqlXmwY6y0Sl5L+IZVcA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            direction: rtl;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #1f4e79;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .upload-area {
+            border: 3px dashed #1f4e79;
+            border-radius: 12px;
+            padding: 40px;
+            text-align: center;
+            margin-bottom: 30px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .upload-area:hover {
+            background: #f0f7ff;
+            border-color: #0066cc;
+        }
+        .upload-area input {
+            display: none;
+        }
+        .btn {
+            background: #1f4e79;
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .btn:hover {
+            background: #0066cc;
+        }
+        .info-box {
+            background: #e7f3ff;
+            border: 2px solid #1f4e79;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .info-box h3 {
+            margin-top: 0;
+            color: #1f4e79;
+        }
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            font-size: 14px;
+        }
+        .data-table th, .data-table td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: right;
+        }
+        .data-table th {
+            background: #1f4e79;
+            color: white;
+            font-weight: 600;
+        }
+        .data-table tr:nth-child(even) {
+            background: #f9f9f9;
+        }
+        .error {
+            background: #ffe7e7;
+            border: 2px solid #dc3545;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .success {
+            background: #d4edda;
+            border: 2px solid #28a745;
+            color: #155724;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        pre {
+            background: #f4f4f4;
+            border: 1px solid #ddd;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+            direction: ltr;
+            text-align: left;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 בדיקת קובץ Excel - march_s_2025.xlsx</h1>
+
+        <div class="upload-area" onclick="document.getElementById('fileInput').click()">
+            <input type="file" id="fileInput" accept=".xlsx,.xls">
+            <div style="font-size: 48px; margin-bottom: 20px;">📄</div>
+            <h2>לחץ כאן לבחירת קובץ</h2>
+            <p>בחר את הקובץ: march_s_2025.xlsx</p>
+        </div>
+
+        <div id="results"></div>
+    </div>
+
+    <script>
+        document.getElementById('fileInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = '<div class="info-box"><h3>⏳ טוען את הקובץ...</h3></div>';
+
+            const reader = new FileReader();
+
+            reader.onload = function(event) {
+                try {
+                    const data = new Uint8Array(event.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+
+                    let html = '<div class="success"><h3>✅ הקובץ נטען בהצלחה!</h3></div>';
+
+                    // File info
+                    html += '<div class="info-box">';
+                    html += '<h3>📊 מידע על הקובץ:</h3>';
+                    html += `<p><strong>שם הקובץ:</strong> ${file.name}</p>`;
+                    html += `<p><strong>גודל:</strong> ${(file.size / 1024).toFixed(2)} KB</p>`;
+                    html += `<p><strong>מספר גיליונות:</strong> ${workbook.SheetNames.length}</p>`;
+                    html += `<p><strong>שמות גיליונות:</strong> ${workbook.SheetNames.join(', ')}</p>`;
+                    html += '</div>';
+
+                    // First sheet analysis
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    const rawData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+
+                    html += '<div class="info-box">';
+                    html += `<h3>📋 ניתוח גיליון: ${firstSheetName}</h3>`;
+                    html += `<p><strong>מספר שורות:</strong> ${rawData.length}</p>`;
+                    html += '</div>';
+
+                    // Show first 15 rows
+                    html += '<div class="info-box">';
+                    html += '<h3>🔍 15 השורות הראשונות:</h3>';
+                    html += '<table class="data-table"><thead><tr><th>#</th><th>תוכן השורה</th></tr></thead><tbody>';
+
+                    for (let i = 0; i < Math.min(15, rawData.length); i++) {
+                        const row = rawData[i];
+                        const rowStr = row.map(cell => {
+                            if (cell === null || cell === undefined || cell === '') return '[ריק]';
+                            return String(cell);
+                        }).join(' | ');
+                        html += `<tr><td>${i}</td><td style="direction: rtl;">${rowStr}</td></tr>`;
+                    }
+
+                    html += '</tbody></table></div>';
+
+                    // Look for header row
+                    html += '<div class="info-box">';
+                    html += '<h3>🔎 חיפוש שורת כותרות:</h3>';
+
+                    let headerRowIndex = -1;
+                    for (let i = 0; i < rawData.length; i++) {
+                        const row = rawData[i];
+                        const rowStr = row.join('|');
+                        if (rowStr.includes('תאריך') && rowStr.includes('הפעולה')) {
+                            headerRowIndex = i;
+                            break;
+                        }
+                    }
+
+                    if (headerRowIndex !== -1) {
+                        html += `<p style="color: green; font-weight: bold;">✅ שורת כותרות נמצאה בשורה ${headerRowIndex}</p>`;
+                        html += `<p><strong>כותרות:</strong> ${rawData[headerRowIndex].join(', ')}</p>`;
+
+                        // Column mapping
+                        const headers = rawData[headerRowIndex];
+                        const colMap = {};
+                        headers.forEach((header, idx) => {
+                            const h = String(header).trim();
+                            colMap[h] = idx;
+                        });
+
+                        html += '<p><strong>מיפוי עמודות:</strong></p><pre>' + JSON.stringify(colMap, null, 2) + '</pre>';
+
+                        // Check required columns
+                        const dateCol = colMap['תאריך'];
+                        const actionCol = colMap['הפעולה'];
+                        const debitCol = colMap['חובה'] !== undefined ? colMap['חובה'] : colMap['חיוב'];
+                        const creditCol = colMap['זכות'];
+
+                        html += '<p><strong>עמודות נדרשות:</strong></p>';
+                        html += `<ul>`;
+                        html += `<li>תאריך: ${dateCol !== undefined ? '✅ נמצא (עמודה ' + dateCol + ')' : '❌ לא נמצא'}</li>`;
+                        html += `<li>הפעולה: ${actionCol !== undefined ? '✅ נמצא (עמודה ' + actionCol + ')' : '❌ לא נמצא'}</li>`;
+                        html += `<li>חובה/חיוב: ${debitCol !== undefined ? '✅ נמצא (עמודה ' + debitCol + ')' : '❌ לא נמצא'}</li>`;
+                        html += `<li>זכות: ${creditCol !== undefined ? '✅ נמצא (עמודה ' + creditCol + ')' : '❌ לא נמצא'}</li>`;
+                        html += '</ul>';
+
+                        // Show sample data rows
+                        if (dateCol !== undefined && actionCol !== undefined) {
+                            html += '<h4>📊 3 שורות דוגמה:</h4>';
+                            html += '<table class="data-table"><thead><tr><th>תאריך</th><th>פעולה</th><th>חובה</th><th>זכות</th></tr></thead><tbody>';
+
+                            const dataRows = rawData.slice(headerRowIndex + 1);
+                            for (let i = 0; i < Math.min(3, dataRows.length); i++) {
+                                const row = dataRows[i];
+                                html += '<tr>';
+                                html += `<td>${row[dateCol] || '[ריק]'}</td>`;
+                                html += `<td>${row[actionCol] || '[ריק]'}</td>`;
+                                html += `<td>${debitCol !== undefined ? (row[debitCol] || '[ריק]') : 'N/A'}</td>`;
+                                html += `<td>${creditCol !== undefined ? (row[creditCol] || '[ריק]') : 'N/A'}</td>`;
+                                html += '</tr>';
+                            }
+
+                            html += '</tbody></table>';
+                        }
+
+                    } else {
+                        html += '<p style="color: red; font-weight: bold;">❌ שורת כותרות לא נמצאה!</p>';
+                        html += '<p>חיפשנו שורה שמכילה גם "תאריך" וגם "הפעולה" אבל לא מצאנו.</p>';
+                        html += '<p><strong>אולי העמודות נקראות אחרת?</strong></p>';
+                    }
+
+                    html += '</div>';
+
+                    resultsDiv.innerHTML = html;
+
+                } catch (error) {
+                    resultsDiv.innerHTML = `
+                        <div class="error">
+                            <h3>❌ שגיאה בקריאת הקובץ</h3>
+                            <p><strong>הודעת שגיאה:</strong> ${error.message}</p>
+                            <pre>${error.stack}</pre>
+                        </div>
+                    `;
+                }
+            };
+
+            reader.onerror = function(error) {
+                resultsDiv.innerHTML = `
+                    <div class="error">
+                        <h3>❌ שגיאה בטעינת הקובץ</h3>
+                        <p>לא ניתן לקרוא את הקובץ מהדיסק</p>
+                    </div>
+                `;
+            };
+
+            reader.readAsArrayBuffer(file);
+        });
+    </script>
+</body>
+</html>

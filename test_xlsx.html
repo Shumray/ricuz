@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>בדיקת XLSX</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" integrity="sha512-r22gChDnGvBylk90+2e/ycr+equG0CPaoP7F09mZR9dPNZlV43Q3Iw7YSn8WP9rbI9eqlXmwY6y0Sl5L+IZVcA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            direction: rtl;
+            padding: 20px;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        .status {
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            font-size: 18px;
+            text-align: center;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+            border: 2px solid #28a745;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 2px solid #dc3545;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 10px;
+        }
+        #testFile {
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 בדיקת ספריית XLSX</h1>
+
+    <div id="libraryStatus"></div>
+
+    <div>
+        <h2>בדיקת קריאת קובץ Excel:</h2>
+        <input type="file" id="testFile" accept=".xlsx,.xls">
+        <div id="fileStatus"></div>
+    </div>
+
+    <script>
+        // Check if XLSX library is loaded
+        window.addEventListener('DOMContentLoaded', function() {
+            const statusDiv = document.getElementById('libraryStatus');
+
+            if (typeof XLSX !== 'undefined') {
+                statusDiv.className = 'status success';
+                statusDiv.innerHTML = '✅ ספריית XLSX נטענה בהצלחה!<br>גרסה: ' + (XLSX.version || 'לא ידוע');
+                console.log('✅ XLSX library loaded successfully');
+                console.log('XLSX object:', XLSX);
+            } else {
+                statusDiv.className = 'status error';
+                statusDiv.innerHTML = '❌ ספריית XLSX לא נטענה!<br>אנא רענן את הדף ונסה שוב.';
+                console.error('⚠️ XLSX library not loaded');
+            }
+        });
+
+        // Test file reading
+        document.getElementById('testFile').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            const fileStatusDiv = document.getElementById('fileStatus');
+
+            if (!file) return;
+
+            if (typeof XLSX === 'undefined') {
+                fileStatusDiv.className = 'status error';
+                fileStatusDiv.innerHTML = '❌ לא ניתן לקרוא את הקובץ - ספריית XLSX לא נטענה';
+                return;
+            }
+
+            const reader = new FileReader();
+
+            reader.onload = function(event) {
+                try {
+                    const data = new Uint8Array(event.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+
+                    fileStatusDiv.className = 'status success';
+                    fileStatusDiv.innerHTML = '✅ הקובץ נקרא בהצלחה!<br>' +
+                        'שמות גיליונות: ' + workbook.SheetNames.join(', ');
+
+                    console.log('Excel file read successfully:', workbook);
+                } catch (error) {
+                    fileStatusDiv.className = 'status error';
+                    fileStatusDiv.innerHTML = '❌ שגיאה בקריאת הקובץ:<br>' + error.message;
+                    console.error('Error reading Excel file:', error);
+                }
+            };
+
+            reader.onerror = function(error) {
+                fileStatusDiv.className = 'status error';
+                fileStatusDiv.innerHTML = '❌ שגיאה בטעינת הקובץ';
+                console.error('FileReader error:', error);
+            };
+
+            reader.readAsArrayBuffer(file);
+        });
+    </script>
+</body>
+</html>

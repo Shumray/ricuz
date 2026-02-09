@@ -21,6 +21,18 @@ class BudgetSystem {
 
     // Initialize the system
     initialize() {
+        // Wait a moment for external libraries to load
+        setTimeout(() => {
+            // Verify XLSX library is loaded for Excel import functionality
+            if (typeof XLSX !== 'undefined') {
+                console.log('✅ XLSX library loaded successfully, version:', XLSX.version || 'unknown');
+            } else {
+                console.warn('⚠️ XLSX library not loaded - Excel import will not work');
+                console.log('Available window properties containing "xls":', 
+                    Object.keys(window).filter(k => k.toLowerCase().includes('xls')));
+            }
+        }, 100);
+
         this.checkUserSetup(); // Check if user has entered their details
         this.initializeDefaultMappings();
         this.loadData();
@@ -523,6 +535,16 @@ class BudgetSystem {
         // Determine type automatically
         const type = this.getTransactionType(formData.item);
 
+        // Check if the item name is exactly "שיק" (without parentheses)
+        let finalNote = formData.note;
+        if (formData.item === 'שיק') {
+            // Add "צ'יק" note if not already present
+            if (!finalNote.includes('צ\'יק')) {
+                finalNote = finalNote ? `${finalNote} - צ'יק` : 'צ\'יק';
+            }
+            console.log(`Adding note "צ'יק" to manually added item: ${formData.item}`);
+        }
+
         const transactionData = {
             month: formData.month,
             year: this.currentYear, // Add year to transaction
@@ -530,7 +552,7 @@ class BudgetSystem {
             amount: type === 'expense' ? -Math.abs(formData.amount) : Math.abs(formData.amount),
             type: type,
             category: this.getCategoryForItem(formData.item),
-            note: formData.note,
+            note: finalNote,
             paymentMethod: formData.isCheck ? 'check' : 'cash',
             checkDetails: formData.isCheck ? this.currentCheckData : null,
             color: formData.color === 'none' ? null : formData.color
@@ -2626,6 +2648,16 @@ class BudgetSystem {
         });
     }
 
+    // Check if a check item is a duplicate
+    isDuplicateCheckItem(newCheckItem) {
+        return this.importedCheckItems.some(existing => {
+            return existing.item === newCheckItem.item &&
+                   existing.month === newCheckItem.month &&
+                   existing.year === newCheckItem.year &&
+                   Math.abs(existing.amount - newCheckItem.amount) < 0.01; // Allow for floating point precision
+        });
+    }
+
     // Import CSV or XLSX file
     importCSV(file) {
         if (!file) return;
@@ -2633,7 +2665,24 @@ class BudgetSystem {
         const fileExtension = file.name.split('.').pop().toLowerCase();
 
         if (fileExtension === 'xlsx' || fileExtension === 'xls') {
-            // Process Excel file
+            // Check if XLSX library is available before processing
+            if (typeof XLSX === 'undefined') {
+                // Try to load XLSX library using global function
+                if (typeof window.loadXLSXLibrary === 'function') {
+                    console.log('⏳ טוען ספריית XLSX...');
+                    window.loadXLSXLibrary().then(() => {
+                        console.log('✅ XLSX נטען, מתחיל עיבוד קובץ');
+                        this.processExcelFile(file);
+                    }).catch(() => {
+                        alert('שגיאה: לא ניתן לטעון את ספריית XLSX.\n\nפתרונות:\n1. רענן את הדף ונסה שוב\n2. בדוק חיבור אינטרנט\n3. השתמש בקובץ CSV במקום XLSX');
+                    });
+                } else {
+                    alert('שגיאה: פונקציית טעינת XLSX לא זמינה.\nרענן את הדף ונסה שוב.');
+                }
+                return;
+            }
+            
+            // XLSX library is already loaded
             this.processExcelFile(file);
         } else {
             // Process CSV file (original flow)
@@ -2665,12 +2714,23 @@ class BudgetSystem {
                     }
                 });
 
-                // Add check items separately
+                // Add check items separately with duplicate checking
                 if (result.checkItems && result.checkItems.length > 0) {
+                    let skippedCheckItems = 0;
                     result.checkItems.forEach(checkItem => {
-                        this.importedCheckItems.push(checkItem);
-                        checkItemsCount++;
+                        // Check for duplicates before adding
+                        if (this.isDuplicateCheckItem(checkItem)) {
+                            skippedCheckItems++;
+                            console.log(`Skipping duplicate check item: ${checkItem.item} - ${checkItem.amount}`);
+                        } else {
+                            this.importedCheckItems.push(checkItem);
+                            checkItemsCount++;
+                        }
                     });
+                    
+                    if (skippedCheckItems > 0) {
+                        console.log(`⚠️ ${skippedCheckItems} פריטי שיק כפולים דולגו`);
+                    }
                 }
 
                 this.saveData();
@@ -2682,6 +2742,14 @@ class BudgetSystem {
                 }
                 if (skippedCount > 0) {
                     message += `\n⚠️ ${skippedCount} עסקאות כפולות דולגו`;
+                }
+                // Add info about skipped check items
+                if (result.checkItems && result.checkItems.length > 0) {
+                    const totalCheckItemsAttempted = result.checkItems.length;
+                    const skippedCheckItems = totalCheckItemsAttempted - checkItemsCount;
+                    if (skippedCheckItems > 0) {
+                        message += `\n⚠️ ${skippedCheckItems} פריטי שיק כפולים דולגו`;
+                    }
                 }
                 this.showNotification(message, addedCount > 0 ? 'success' : 'info');
                 
@@ -2714,6 +2782,19 @@ class BudgetSystem {
 
     // Process Excel file and convert to CSV format
     processExcelFile(file) {
+        // Check if XLSX library is available
+        if (typeof XLSX === 'undefined') {
+            // Try to load XLSX library dynamically
+            this.loadXLSXLibrary().then(() => {
+                this.processExcelFile(file); // Retry after loading
+            }).catch(() => {
+                alert('שגיאה: ספריית XLSX לא נטענה.\n\nפתרונות אפשריים:\n1. רענן את הדף ונסה שוב\n2. בדוק חיבור לאינטרנט\n3. נסה דפדפן אחר\n4. השתמש בקובץ CSV במקום XLSX');
+            });
+            return;
+        }
+
+        console.log('✅ XLSX library loaded successfully, processing file:', file.name);
+
         const reader = new FileReader();
         reader.onload = (e) => {
             try {
@@ -2727,25 +2808,35 @@ class BudgetSystem {
                 // Convert to array of arrays
                 const rawData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
                 
+                console.log('📊 Excel file data:', {
+                    totalRows: rawData.length,
+                    firstRows: rawData.slice(0, 5)
+                });
+
                 // Find header row (contains 'תאריך' and 'הפעולה')
                 let headerRowIndex = -1;
                 for (let i = 0; i < rawData.length; i++) {
                     const row = rawData[i];
                     const rowStr = row.join('|');
+                    console.log(`Row ${i}:`, rowStr);
                     if (rowStr.includes('תאריך') && rowStr.includes('הפעולה')) {
                         headerRowIndex = i;
+                        console.log(`✅ Found header row at index ${i}`);
                         break;
                     }
                 }
                 
                 if (headerRowIndex === -1) {
-                    alert('שגיאה: לא נמצאה שורת כותרות בקובץ.\nצפוי מבנה עם עמודות: תאריך, הפעולה');
+                    console.error('❌ Header row not found. First 10 rows:', rawData.slice(0, 10));
+                    alert('שגיאה: לא נמצאה שורת כותרות בקובץ.\nצפוי מבנה עם עמודות: תאריך, הפעולה\n\nבדוק את ה-Console לפרטים נוספים (F12)');
                     return;
                 }
                 
                 const headers = rawData[headerRowIndex];
                 const dataRows = rawData.slice(headerRowIndex + 1);
                 
+                console.log('📋 Headers found:', headers);
+
                 // Map column indices
                 const colMap = {};
                 headers.forEach((header, idx) => {
@@ -2753,14 +2844,19 @@ class BudgetSystem {
                     colMap[h] = idx;
                 });
                 
+                console.log('🗺️ Column map:', colMap);
+
                 // Columns to keep
                 const dateCol = colMap['תאריך'];
                 const actionCol = colMap['הפעולה'];
                 const debitCol = colMap['חובה'] !== undefined ? colMap['חובה'] : colMap['חיוב'];
                 const creditCol = colMap['זכות'];
                 
+                console.log('📊 Column indices:', { dateCol, actionCol, debitCol, creditCol });
+
                 if (dateCol === undefined || actionCol === undefined) {
-                    alert('שגיאה: חסרות עמודות חובה בקובץ (תאריך, הפעולה)');
+                    console.error('❌ Required columns not found. Available columns:', Object.keys(colMap));
+                    alert('שגיאה: חסרות עמודות חובה בקובץ (תאריך, הפעולה)\n\nעמודות זמינות: ' + Object.keys(colMap).join(', ') + '\n\nבדוק את ה-Console לפרטים נוספים (F12)');
                     return;
                 }
                 
@@ -2774,7 +2870,9 @@ class BudgetSystem {
                 const processedRows = [];
                 const monthCounts = {};
                 
-                dataRows.forEach(row => {
+                console.log(`🔄 Processing ${dataRows.length} data rows...`);
+
+                dataRows.forEach((row, index) => {
                     if (!row || row.length === 0) return;
                     
                     let dateValue = row[dateCol];
@@ -2793,12 +2891,19 @@ class BudgetSystem {
                         // Excel date number
                         const excelDate = XLSX.SSF.parse_date_code(dateValue);
                         dateStr = `${excelDate.y}-${String(excelDate.m).padStart(2, '0')}-${String(excelDate.d).padStart(2, '0')}`;
+                        if (index < 3) console.log(`Date conversion (row ${index}): ${dateValue} -> ${dateStr}`);
                     } else if (typeof dateValue === 'string') {
                         dateStr = dateValue.replace(' 00:00:00', '').trim();
+                        if (index < 3) console.log(`Date string (row ${index}): ${dateValue} -> ${dateStr}`);
+                    } else {
+                        if (index < 3) console.log(`Unknown date type (row ${index}):`, typeof dateValue, dateValue);
                     }
                     
-                    if (!dateStr || dateStr.length < 10) return;
-                    
+                    if (!dateStr || dateStr.length < 10) {
+                        if (index < 3) console.warn(`Invalid date format (row ${index}): "${dateStr}"`);
+                        return;
+                    }
+
                     // Extract year and month
                     const year = dateStr.substring(0, 4);
                     const monthNum = dateStr.substring(5, 7);
@@ -2818,6 +2923,9 @@ class BudgetSystem {
                     });
                 });
                 
+                console.log(`✅ Processed ${processedRows.length} rows`);
+                console.log('📊 Month counts:', monthCounts);
+
                 // Find most frequent month
                 let mostFrequentMonth = null;
                 let maxCount = 0;
@@ -2828,11 +2936,16 @@ class BudgetSystem {
                     }
                 }
                 
+                console.log(`📅 Most frequent month: ${mostFrequentMonth} (${maxCount} items)`);
+
                 // Keep only rows from most frequent month
                 const filteredRows = processedRows.filter(row => row.month === mostFrequentMonth);
                 
+                console.log(`✅ Filtered to ${filteredRows.length} rows for ${mostFrequentMonth}`);
+
                 if (filteredRows.length === 0) {
-                    alert('שגיאה: לא נמצאו נתונים תקינים בקובץ');
+                    console.error('❌ No valid data found after filtering');
+                    alert('שגיאה: לא נמצאו נתונים תקינים בקובץ\n\nבדוק את ה-Console לפרטים נוספים (F12)');
                     return;
                 }
                 
@@ -2900,12 +3013,23 @@ class BudgetSystem {
                     }
                 });
                 
-                // Add check items separately
+                // Add check items separately with duplicate checking
                 if (result.checkItems && result.checkItems.length > 0) {
+                    let skippedCheckItems = 0;
                     result.checkItems.forEach(checkItem => {
-                        this.importedCheckItems.push(checkItem);
-                        checkItemsCount++;
+                        // Check for duplicates before adding
+                        if (this.isDuplicateCheckItem(checkItem)) {
+                            skippedCheckItems++;
+                            console.log(`Skipping duplicate check item: ${checkItem.item} - ${checkItem.amount}`);
+                        } else {
+                            this.importedCheckItems.push(checkItem);
+                            checkItemsCount++;
+                        }
                     });
+                    
+                    if (skippedCheckItems > 0) {
+                        console.log(`⚠️ ${skippedCheckItems} פריטי שיק כפולים דולגו`);
+                    }
                 }
 
                 this.saveData();
@@ -2916,6 +3040,14 @@ class BudgetSystem {
                 }
                 if (skippedCount > 0) {
                     message += `\n⚠️ ${skippedCount} עסקאות כפולות דולגו`;
+                }
+                // Add info about skipped check items
+                if (result.checkItems && result.checkItems.length > 0) {
+                    const totalCheckItemsAttempted = result.checkItems.length;
+                    const skippedCheckItems = totalCheckItemsAttempted - checkItemsCount;
+                    if (skippedCheckItems > 0) {
+                        message += `\n⚠️ ${skippedCheckItems} פריטי שיק כפולים דולגו`;
+                    }
                 }
                 this.showNotification(message, addedCount > 0 ? 'success' : 'info');
                 
@@ -2938,6 +3070,12 @@ class BudgetSystem {
                 alert('שגיאה בקריאת קובץ Excel:\n' + error.message);
             }
         };
+
+        reader.onerror = (error) => {
+            console.error('FileReader error:', error);
+            alert('שגיאה בקריאת הקובץ.\nאנא ודא שהקובץ תקין ונסה שוב.');
+        };
+
         reader.readAsArrayBuffer(file);
     }
 
@@ -3083,6 +3221,13 @@ class BudgetSystem {
                 category = this.getCategoryForItem(item);
             }
 
+            // Check if the item name is exactly "שיק" (without parentheses)
+            let noteToAdd = '';
+            if (item === 'שיק') {
+                noteToAdd = 'צ\'יק';
+                console.log(`Adding note "צ'יק" to item: ${item}`);
+            }
+
             transactions.push({
                 id: Date.now() + Math.random(),
                 item: item,
@@ -3091,7 +3236,7 @@ class BudgetSystem {
                 category: category,
                 month: parseInt(month),
                 year: parseInt(year),
-                note: '',
+                note: noteToAdd,
                 paymentMethod: isCheckPayment ? 'check' : 'cash',
                 checkDetails: isCheckPayment ? { checkNumber: '', payeeName: '' } : null,
                 color: 'yellow' // Auto-color CSV imports as yellow
@@ -4612,6 +4757,33 @@ class BudgetSystem {
                 </div>
             `;
         }
+    }
+
+    // Ensure XLSX library is loaded before use
+    async ensureXLSXLoaded() {
+        return new Promise((resolve, reject) => {
+            if (typeof XLSX !== 'undefined') {
+                console.log('✅ XLSX already loaded');
+                resolve();
+                return;
+            }
+
+            console.log('📥 Loading XLSX library...');
+            
+            // Use the global loadXLSXLibrary function if available
+            if (typeof window.loadXLSXLibrary === 'function') {
+                window.loadXLSXLibrary()
+                    .then(() => resolve())
+                    .catch(() => reject(new Error('Failed to load XLSX library')));
+            } else {
+                reject(new Error('XLSX loading function not available'));
+            }
+        });
+    }
+
+    // Load XLSX library dynamically (alternative method)
+    loadXLSXLibrary() {
+        return this.ensureXLSXLoaded();
     }
 }
 
