@@ -291,6 +291,44 @@
                     </div>
                 </div>
 
+                <!-- Dropbox Sync Section -->
+                <div class="settings-section">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <h3 style="color: #1f4e79; margin: 0;">☁️ סנכרון Dropbox</h3>
+                        <button onclick="window.dropboxSync?.showHelpModal()" class="btn btn-info" style="font-size: 0.9em; padding: 5px 12px;">📖 איך להתחיל?</button>
+                    </div>
+                    
+                    <div id="dropboxSyncStatus" style="background: #f8f9fa; padding: 10px; border-radius: 6px; margin-bottom: 15px; text-align: center; font-size: 0.95em;">
+                        <span style="color: #6c757d;">⏳ טוען...</span>
+                    </div>
+
+                    <div class="form-grid" style="margin-bottom: 15px;">
+                        <div class="form-group" style="grid-column: 1 / -1;">
+                            <label for="dropboxAccessToken">Dropbox Access Token</label>
+                            <input type="password" id="dropboxAccessToken" placeholder="הזן את ה-Access Token שלך" style="font-family: monospace;">
+                            <small style="display: block; margin-top: 5px; color: #6c757d;">💡 לחץ על "איך להתחיל?" למדריך יצירת Token</small>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 15px;">
+                        <button id="saveDropboxTokenBtn" class="btn btn-primary">💾 שמור Token</button>
+                        <button id="testDropboxConnectionBtn" class="btn btn-secondary">🔌 בדוק חיבור</button>
+                    </div>
+
+                    <div style="border-top: 1px solid #dee2e6; padding-top: 15px; margin-top: 15px;">
+                        <label class="checkbox-container" style="margin-bottom: 15px;">
+                            <input type="checkbox" id="dropboxAutoSync">
+                            <span class="checkmark"></span>
+                            <span class="checkbox-label">🔄 סנכרן אוטומטית בכל שמירה</span>
+                        </label>
+
+                        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                            <button id="uploadToDropboxBtn" class="btn btn-success">📤 העלה נתונים ל-Dropbox</button>
+                            <button id="downloadFromDropboxBtn" class="btn btn-warning">📥 הורד נתונים מ-Dropbox</button>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Mapping Section -->
                 <div class="settings-section">
                     <div class="panel-header">
@@ -538,5 +576,6 @@
 
     <!-- Scripts -->
     <script src="budget.js"></script>
+    <script src="dropbox-sync.js"></script>
 </body>
 </html>

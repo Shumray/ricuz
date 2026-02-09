@@ -2342,6 +2342,11 @@ class BudgetSystem {
         if (this.lastSelectedYear !== null && this.lastSelectedYear !== undefined) {
             localStorage.setItem('lastSelectedYear', this.lastSelectedYear.toString());
         }
+        
+        // Trigger Dropbox auto-sync if enabled
+        if (window.dropboxSync) {
+            window.dropboxSync.autoSync();
+        }
     }
 
     loadData() {
@@ -4804,7 +4809,10 @@ document.head.appendChild(style);
 // Initialize the budget system when the page loads
 let budgetSystem;
 document.addEventListener('DOMContentLoaded', async () => {
+    console.log('🚀 Initializing Budget System...');
     budgetSystem = new BudgetSystem();
+    window.budgetSystem = budgetSystem; // Make it globally accessible
+    console.log('✅ Budget System initialized and available globally');
     
     // Fix categories for existing transactions - run after initialization
     setTimeout(() => {
