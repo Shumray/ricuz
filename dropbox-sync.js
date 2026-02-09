@@ -7,11 +7,16 @@ class DropboxSync {
         this.accessToken = null;
         this.filePath = '/budget-data.json';
         this.autoSyncEnabled = false;
+        this.biDirectionalSyncEnabled = false;
         this.syncInProgress = false;
         this.lastSyncTime = null;
+        this.lastRemoteModified = null;
+        this.syncCheckInterval = null;
+        this.syncIntervalMinutes = 2; // Check every 2 minutes
         
         this.loadSettings();
         this.initializeUI();
+        this.startBiDirectionalSync();
     }
 
     // Load Dropbox settings from localStorage
@@ -23,7 +28,9 @@ class DropboxSync {
                 this.accessToken = parsed.accessToken || null;
                 this.filePath = parsed.filePath || '/budget-data.json';
                 this.autoSyncEnabled = parsed.autoSyncEnabled || false;
+                this.biDirectionalSyncEnabled = parsed.biDirectionalSyncEnabled || false;
                 this.lastSyncTime = parsed.lastSyncTime || null;
+                this.lastRemoteModified = parsed.lastRemoteModified || null;
             } catch (e) {
                 console.error('Error loading Dropbox settings:', e);
             }
@@ -36,7 +43,9 @@ class DropboxSync {
             accessToken: this.accessToken,
             filePath: this.filePath,
             autoSyncEnabled: this.autoSyncEnabled,
-            lastSyncTime: this.lastSyncTime
+            biDirectionalSyncEnabled: this.biDirectionalSyncEnabled,
+            lastSyncTime: this.lastSyncTime,
+            lastRemoteModified: this.lastRemoteModified
         };
         localStorage.setItem('dropboxSettings', JSON.stringify(settings));
     }
@@ -68,6 +77,21 @@ class DropboxSync {
             });
         } else {
             console.warn('⚠️ Auto-sync checkbox not found');
+        }
+
+        // Bi-directional sync checkbox
+        const biDirectionalSyncCheckbox = document.getElementById('dropboxBiDirectionalSync');
+        if (biDirectionalSyncCheckbox) {
+            biDirectionalSyncCheckbox.checked = this.biDirectionalSyncEnabled;
+            biDirectionalSyncCheckbox.addEventListener('change', (e) => {
+                this.biDirectionalSyncEnabled = e.target.checked;
+                this.saveSettings();
+                this.updateSyncStatus();
+                this.startBiDirectionalSync();
+                console.log(`🔁 Bi-directional sync ${this.biDirectionalSyncEnabled ? 'enabled' : 'disabled'}`);
+            });
+        } else {
+            console.warn('⚠️ Bi-directional sync checkbox not found');
         }
 
         // Save token button
@@ -242,6 +266,14 @@ class DropboxSync {
             });
 
             if (response.ok) {
+                const result = await response.json();
+                
+                // Store the server modified time
+                if (result.server_modified) {
+                    this.lastRemoteModified = result.server_modified;
+                    console.log('📅 Updated lastRemoteModified after upload:', this.lastRemoteModified);
+                }
+                
                 this.lastSyncTime = new Date().toISOString();
                 this.saveSettings();
                 this.updateSyncStatus();
@@ -281,19 +313,23 @@ class DropboxSync {
     }
 
     // Download data from Dropbox
-    async downloadFromDropbox() {
+    async downloadFromDropbox(silent = false) {
         if (!this.accessToken) {
-            this.budgetSystem.showNotification('❌ לא הוגדר Access Token', 'error');
+            if (!silent) {
+                this.budgetSystem.showNotification('❌ לא הוגדר Access Token', 'error');
+            }
             return false;
         }
 
         if (this.syncInProgress) {
-            this.budgetSystem.showNotification('⏳ סנכרון כבר מתבצע...', 'info');
+            if (!silent) {
+                this.budgetSystem.showNotification('⏳ סנכרון כבר מתבצע...', 'info');
+            }
             return false;
         }
 
-        // Confirm before overwriting local data
-        if (!confirm('⚠️ פעולה זו תשכתב את כל הנתונים המקומיים. האם להמשיך?')) {
+        // Confirm before overwriting local data (skip if silent)
+        if (!silent && !confirm('⚠️ פעולה זו תשכתב את כל הנתונים המקומיים. האם להמשיך?')) {
             return false;
         }
 
@@ -312,6 +348,18 @@ class DropboxSync {
             });
 
             if (response.ok) {
+                // Get the remote modified time from response headers
+                const dropboxApiResult = response.headers.get('Dropbox-API-Result');
+                if (dropboxApiResult) {
+                    try {
+                        const metadata = JSON.parse(dropboxApiResult);
+                        this.lastRemoteModified = metadata.server_modified;
+                        console.log('📅 Updated lastRemoteModified:', this.lastRemoteModified);
+                    } catch (e) {
+                        console.warn('Could not parse Dropbox-API-Result header');
+                    }
+                }
+                
                 const jsonText = await response.text();
                 const data = JSON.parse(jsonText);
 
@@ -358,7 +406,9 @@ class DropboxSync {
                 this.saveSettings();
                 this.updateSyncStatus();
 
-                this.budgetSystem.showNotification('✅ הנתונים הורדו מ-Dropbox בהצלחה!', 'success');
+                if (!silent) {
+                    this.budgetSystem.showNotification('✅ הנתונים הורדו מ-Dropbox בהצלחה!', 'success');
+                }
                 return true;
             } else {
                 const errorText = await response.text();
@@ -379,7 +429,9 @@ class DropboxSync {
             }
         } catch (error) {
             console.error('Dropbox download error:', error);
-            this.budgetSystem.showNotification('❌ שגיאה בהורדה מ-Dropbox: ' + error.message, 'error');
+            if (!silent) {
+                this.budgetSystem.showNotification('❌ שגיאה בהורדה מ-Dropbox: ' + error.message, 'error');
+            }
             return false;
         } finally {
             this.syncInProgress = false;
@@ -411,6 +463,10 @@ class DropboxSync {
 
         if (this.autoSyncEnabled && this.accessToken) {
             statusHTML += ' | <span style="color: #007bff;">🔄 סנכרון אוטומטי מופעל</span>';
+        }
+
+        if (this.biDirectionalSyncEnabled && this.accessToken) {
+            statusHTML += ' | <span style="color: #17a2b8;">🔁 סנכרון דו-כיווני פעיל</span>';
         }
 
         statusElement.innerHTML = statusHTML;
@@ -445,6 +501,91 @@ class DropboxSync {
         if (this.autoSyncEnabled && this.accessToken && !this.syncInProgress) {
             console.log('Auto-syncing to Dropbox...');
             await this.uploadToDropbox(true); // Silent upload
+        }
+    }
+
+    // Start bi-directional sync checking
+    startBiDirectionalSync() {
+        // Stop existing interval if any
+        this.stopBiDirectionalSync();
+
+        if (this.biDirectionalSyncEnabled && this.accessToken) {
+            console.log(`🔁 Starting bi-directional sync (checking every ${this.syncIntervalMinutes} minutes)`);
+            
+            // Check immediately
+            this.checkForRemoteUpdates();
+            
+            // Set up periodic checking
+            this.syncCheckInterval = setInterval(() => {
+                this.checkForRemoteUpdates();
+            }, this.syncIntervalMinutes * 60 * 1000);
+        }
+    }
+
+    // Stop bi-directional sync checking
+    stopBiDirectionalSync() {
+        if (this.syncCheckInterval) {
+            clearInterval(this.syncCheckInterval);
+            this.syncCheckInterval = null;
+            console.log('🔁 Bi-directional sync stopped');
+        }
+    }
+
+    // Check if there are remote updates
+    async checkForRemoteUpdates() {
+        if (!this.accessToken || this.syncInProgress) {
+            return;
+        }
+
+        try {
+            console.log('🔍 Checking for remote updates...');
+            
+            // Get file metadata
+            const response = await fetch('https://api.dropboxapi.com/2/files/get_metadata', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${this.accessToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    path: this.filePath,
+                    include_media_info: false,
+                    include_deleted: false,
+                    include_has_explicit_shared_members: false
+                })
+            });
+
+            if (response.ok) {
+                const metadata = await response.json();
+                const remoteModified = new Date(metadata.server_modified);
+                
+                console.log('📅 Remote file modified:', remoteModified.toISOString());
+                
+                // Check if remote file is newer
+                if (this.lastRemoteModified) {
+                    const lastKnown = new Date(this.lastRemoteModified);
+                    
+                    if (remoteModified > lastKnown) {
+                        console.log('🆕 Remote file is newer! Downloading...');
+                        await this.downloadFromDropbox(true); // Silent download
+                        this.budgetSystem.showNotification('🔄 עדכון חדש התקבל מ-Dropbox!', 'info');
+                    } else {
+                        console.log('✅ Local data is up to date');
+                    }
+                } else {
+                    // First time - just store the date
+                    this.lastRemoteModified = remoteModified.toISOString();
+                    this.saveSettings();
+                    console.log('📌 Stored initial remote modified date');
+                }
+            } else if (response.status === 409) {
+                // File not found - this is normal on first upload
+                console.log('ℹ️ File not found in Dropbox yet');
+            } else {
+                console.warn('⚠️ Could not check remote file:', response.status);
+            }
+        } catch (error) {
+            console.error('❌ Error checking for remote updates:', error);
         }
     }
 
@@ -503,6 +644,124 @@ class DropboxSync {
                     <div style="background: #d1ecf1; padding: 15px; border-radius: 8px; margin-top: 15px; border-right: 4px solid #0dcaf0;">
                         <strong>💡 טיפ:</strong> ה-Token תקף לתמיד עד שתמחק אותו ידנית או תמחק את האפליקציה.
                     </div>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+
+        // Close modal handlers
+        const closeBtn = modal.querySelector('.close');
+        closeBtn.onclick = () => modal.remove();
+        
+        modal.onclick = (e) => {
+            if (e.target === modal) {
+                modal.remove();
+            }
+        };
+    }
+
+    // Show "What is saved" information modal
+    showWhatIsSavedModal() {
+        const modal = document.createElement('div');
+        modal.className = 'modal';
+        modal.style.display = 'flex';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 800px;">
+                <span class="close">&times;</span>
+                <h2>📦 מה נשמר בסנכרון Dropbox?</h2>
+                
+                <div style="text-align: right; line-height: 1.8;">
+                    
+                    <div style="background: #d1ecf1; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-right: 4px solid #0dcaf0;">
+                        <h3 style="margin-top: 0; color: #0c5460;">☁️ פרטי האפליקציה</h3>
+                        <p style="margin: 8px 0;"><strong>שם אפליקציית Dropbox:</strong> <code style="background: #fff; padding: 3px 8px; border-radius: 4px;">ricuzapp2</code></p>
+                        <p style="margin: 8px 0;"><strong>סטטוס:</strong> Development (פיתוח)</p>
+                        <p style="margin: 8px 0;"><strong>סוג הרשאות:</strong> Scoped App</p>
+                        <p style="margin: 8px 0;"><strong>קישור לניהול:</strong> <a href="https://www.dropbox.com/developers/apps" target="_blank" style="color: #007bff;">Dropbox App Console</a></p>
+                    </div>
+
+                    <div style="background: #fff3cd; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-right: 4px solid #ffc107;">
+                        <h3 style="margin-top: 0; color: #856404;">🔐 אבטחת ה-Token</h3>
+                        <p style="margin: 8px 0;">ה-Access Token שלך נשמר באפליקציה <strong>Password Safe</strong> לשמירה מאובטחת.</p>
+                        <p style="margin: 8px 0;"><strong>⚠️ חשוב:</strong> אל תשתף את ה-Token עם אף אחד - הוא מאפשר גישה מלאה לנתונים שלך ב-Dropbox!</p>
+                    </div>
+
+                    <h3 style="color: #1f4e79;">✅ הנתונים שנשמרים אוטומטית:</h3>
+                    
+                    <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                        <h4 style="margin-top: 0; color: #28a745;">💰 נתונים כספיים</h4>
+                        <ul style="margin-right: 25px; line-height: 2;">
+                            <li>✅ <strong>כל העסקאות</strong> - כל התנועות הכספיות שהזנת</li>
+                            <li>✅ <strong>צ'קים מיובאים</strong> - עסקאות שיובאו מקבצי Excel/CSV</li>
+                            <li>✅ <strong>יתרות פתיחה</strong> - יתרות התחלתיות לכל חודש ושנה</li>
+                            <li>✅ <strong>יתרות ידניות</strong> - יתרות שהגדרת באופן ידני</li>
+                        </ul>
+                    </div>
+
+                    <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                        <h4 style="margin-top: 0; color: #007bff;">🗂️ הגדרות ומיפויים</h4>
+                        <ul style="margin-right: 25px; line-height: 2;">
+                            <li>✅ <strong>מיפויים של קטגוריות</strong> - כל המיפויים בין פריטים לקטגוריות</li>
+                            <li>✅ <strong>קטגוריות מותאמות</strong> - קטגוריות שהוספת או ערכת</li>
+                            <li>✅ <strong>הערות חודשיות</strong> - הערות שהוספת לחודשים שונים</li>
+                        </ul>
+                    </div>
+
+                    <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                        <h4 style="margin-top: 0; color: #6c757d;">⚙️ העדפות אישיות</h4>
+                        <ul style="margin-right: 25px; line-height: 2;">
+                            <li>✅ <strong>חודש ושנה אחרונים</strong> - הבחירות האחרונות שלך</li>
+                            <li>✅ <strong>צבע אחרון</strong> - הצבע שבחרת לאחרונה</li>
+                            <li>✅ <strong>שנה נוכחית</strong> - השנה שאתה עובד איתה</li>
+                        </ul>
+                    </div>
+
+                    <div style="background: #d4edda; padding: 15px; border-radius: 8px; margin-bottom: 15px; border-right: 4px solid #28a745;">
+                        <h3 style="margin-top: 0; color: #155724;">📁 היכן הקובץ נשמר?</h3>
+                        <p style="margin: 8px 0;">הקובץ נשמר כ-<code style="background: #fff; padding: 3px 8px; border-radius: 4px;">/budget-data.json</code> בתיקייה הראשית של ה-Dropbox שלך.</p>
+                        <p style="margin: 8px 0;">אתה יכול להיכנס ל-<a href="https://www.dropbox.com" target="_blank" style="color: #007bff;">Dropbox</a> ולראות את הקובץ.</p>
+                    </div>
+
+                    <div style="background: #e7f3ff; padding: 15px; border-radius: 8px; margin-bottom: 15px; border-right: 4px solid #0066cc;">
+                        <h3 style="margin-top: 0; color: #004085;">🔄 מתי הסנכרון מתרחש?</h3>
+                        
+                        <p style="margin: 8px 0;"><strong>📤 סנכרון אוטומטי (העלאה):</strong></p>
+                        <ul style="margin-right: 25px; line-height: 2;">
+                            <li>🔵 בכל פעם שאתה מוסיף/מוחק/מעדכן עסקה</li>
+                            <li>🔵 כשאתה משנה מיפוי או קטגוריה</li>
+                            <li>🔵 כשאתה מעדכן יתרת פתיחה</li>
+                            <li>🔵 כשאתה מוסיף הערה חודשית</li>
+                        </ul>
+                        
+                        <p style="margin: 18px 0 8px 0;"><strong>🔁 סנכרון דו-כיווני (הורדה אוטומטית):</strong></p>
+                        <ul style="margin-right: 25px; line-height: 2;">
+                            <li>🟢 המערכת בודקת אוטומטית <strong>כל 2 דקות</strong> אם יש עדכונים חדשים</li>
+                            <li>🟢 אם מישהו עדכן נתונים במחשב אחר - <strong>תקבל אותם אוטומטית!</strong></li>
+                            <li>🟢 לא צריך ללחוץ כלום - הכל קורה ברקע</li>
+                            <li>🟢 תראה הודעה "🔄 עדכון חדש התקבל מ-Dropbox!" כשיש עדכון</li>
+                        </ul>
+                        
+                        <div style="background: #d4edda; padding: 12px; border-radius: 6px; margin-top: 15px;">
+                            <strong style="color: #155724;">💡 טיפ:</strong> הפעל את שני האפשרויות יחד לסנכרון מושלם!<br>
+                            ✅ סנכרון אוטומטי = העלאה מיידית<br>
+                            ✅ סנכרון דו-כיווני = הורדה אוטומטית כל 2 דקות
+                        </div>
+                    </div>
+
+                    <div style="background: #fff; padding: 15px; border-radius: 8px; border: 2px solid #28a745;">
+                        <h3 style="margin-top: 0; color: #28a745;">🎯 התוצאה עם סנכרון דו-כיווני</h3>
+                        <p style="font-size: 1.1em; margin: 10px 0;"><strong>עובד על 2 מחשבים במקביל? בלי בעיה!</strong></p>
+                        <p style="margin: 10px 0;">✨ עדכן עסקה במחשב A → תוך 2 דקות תראה אותה גם במחשב B!</p>
+                        <p style="margin: 10px 0;">🚀 זה כמו Google Docs - כולם רואים את אותו הדבר!</p>
+                    </div>
+
+                    <div style="background: #f8d7da; padding: 15px; border-radius: 8px; margin-top: 20px; border-right: 4px solid #dc3545;">
+                        <h3 style="margin-top: 0; color: #721c24;">⚠️ מה לא נשמר?</h3>
+                        <p style="margin: 8px 0;">רק דבר אחד לא נשמר: <strong>ה-Dropbox Token עצמו</strong></p>
+                        <p style="margin: 8px 0;">בכל מכשיר חדש תצטרך להזין את ה-Token פעם אחת (הוא שמור ב-Password Safe שלך).</p>
+                    </div>
+
                 </div>
             </div>
         `;

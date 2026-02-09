@@ -293,9 +293,12 @@
 
                 <!-- Dropbox Sync Section -->
                 <div class="settings-section">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; gap: 10px;">
                         <h3 style="color: #1f4e79; margin: 0;">☁️ סנכרון Dropbox</h3>
-                        <button onclick="window.dropboxSync?.showHelpModal()" class="btn btn-info" style="font-size: 0.9em; padding: 5px 12px;">📖 איך להתחיל?</button>
+                        <div style="display: flex; gap: 8px;">
+                            <button onclick="window.dropboxSync?.showWhatIsSavedModal()" class="btn btn-success" style="font-size: 0.9em; padding: 5px 12px;">📦 מה נשמר?</button>
+                            <button onclick="window.dropboxSync?.showHelpModal()" class="btn btn-info" style="font-size: 0.9em; padding: 5px 12px;">📖 איך להתחיל?</button>
+                        </div>
                     </div>
                     
                     <div id="dropboxSyncStatus" style="background: #f8f9fa; padding: 10px; border-radius: 6px; margin-bottom: 15px; text-align: center; font-size: 0.95em;">
@@ -320,6 +323,12 @@
                             <input type="checkbox" id="dropboxAutoSync">
                             <span class="checkmark"></span>
                             <span class="checkbox-label">🔄 סנכרן אוטומטית בכל שמירה</span>
+                        </label>
+
+                        <label class="checkbox-container" style="margin-bottom: 15px;">
+                            <input type="checkbox" id="dropboxBiDirectionalSync">
+                            <span class="checkmark"></span>
+                            <span class="checkbox-label">🔁 סנכרון דו-כיווני (בדיקה אוטומטית כל 2 דקות)</span>
                         </label>
 
                         <div style="display: flex; gap: 10px; flex-wrap: wrap;">
