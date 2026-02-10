@@ -1411,6 +1411,13 @@ body {
     font-weight: 600;
 }
 
+/* Expense cells styling */
+.annual-summary-table .expense-cell {
+    background: #ffebee;
+    color: #c62828;
+    font-weight: 600;
+}
+
 .annual-summary-table .income-total {
     background: linear-gradient(135deg, #4caf50 0%, #2e7d32 100%);
     color: white;

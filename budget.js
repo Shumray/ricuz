@@ -4942,8 +4942,8 @@ class BudgetSystem {
                 category = 'משכורת + ביטוח לאומי';
             }
             
-            // For income transactions, use positive amount; for expenses, use absolute value
-            const amount = transaction.type === 'income' ? transaction.amount : Math.abs(transaction.amount);
+            // Use transaction type to determine sign: income is positive, expense is negative
+            const amount = transaction.type === 'income' ? Math.abs(transaction.amount) : -Math.abs(transaction.amount);
             
             // Add amount to category (monthlyData[month] should always exist after initialization)
             if (!monthlyData[month][category]) {
@@ -4963,14 +4963,11 @@ class BudgetSystem {
         console.log('Categories list:', categories);
         console.log('✅ Transactions processing completed successfully!');
         
-        // Calculate monthly totals (Income - Expenses)
+        // Calculate monthly totals (sum of all categories - already signed correctly)
         const monthlyTotals = {};
         for (let month = 1; month <= 12; month++) {
-            const income = (monthlyData[month] && monthlyData[month]['משכורת + ביטוח לאומי']) || 0;
-            const expenses = categories
-                .filter(cat => cat !== 'משכורת + ביטוח לאומי')
+            monthlyTotals[month] = categories
                 .reduce((sum, cat) => sum + ((monthlyData[month] && monthlyData[month][cat]) || 0), 0);
-            monthlyTotals[month] = income - expenses;
         }
         
         // Build HTML table
@@ -4994,8 +4991,9 @@ class BudgetSystem {
                     <td class="month-name">${monthName}</td>
                     ${categories.map(cat => {
                         const amount = (monthlyData[month] && monthlyData[month][cat]) || 0;
-                        const isIncome = cat === 'משכורת + ביטוח לאומי';
-                        return `<td class="category-amount ${amount === 0 ? 'zero' : ''} ${isIncome ? 'income-cell' : ''}">${
+                        const isIncome = amount > 0;
+                        const isExpense = amount < 0;
+                        return `<td class="category-amount ${amount === 0 ? 'zero' : ''} ${isIncome ? 'income-cell' : ''} ${isExpense ? 'expense-cell' : ''}">${
                             amount === 0 ? '-' : this.formatCurrency(amount)
                         }</td>`;
                     }).join('')}
@@ -5006,18 +5004,27 @@ class BudgetSystem {
             `;
         }
         
-        // Add totals row - calculate totals first
-        const incomeTotal = categoryTotals['משכורת + ביטוח לאומי'] || 0;
-        const expenseCategories = categories.filter(cat => cat !== 'משכורת + ביטוח לאומי');
-        const expenseTotal = expenseCategories.reduce((sum, cat) => sum + categoryTotals[cat], 0);
-        const annualNet = incomeTotal - expenseTotal;
+        // Add totals row - calculate net as sum of all categories (already signed correctly)
+        const annualNet = categories.reduce((sum, cat) => sum + (categoryTotals[cat] || 0), 0);
+        
+        // Calculate income and expense totals for statistics
+        const incomeTotal = categories
+            .reduce((sum, cat) => {
+                const amount = categoryTotals[cat] || 0;
+                return sum + (amount > 0 ? amount : 0);
+            }, 0);
+        const expenseTotal = categories
+            .reduce((sum, cat) => {
+                const amount = categoryTotals[cat] || 0;
+                return sum + (amount < 0 ? Math.abs(amount) : 0);
+            }, 0);
         
         tableHTML += `
                 <tr class="total-row">
                     <td class="month-name">סה״כ שנתי</td>
                     ${categories.map(cat => {
                         const amount = categoryTotals[cat] || 0;
-                        const isIncome = cat === 'משכורת + ביטוח לאומי';
+                        const isIncome = amount > 0;
                         return `<td class="category-total ${isIncome ? 'income-total' : ''}">${
                             amount === 0 ? '-' : this.formatCurrency(amount)
                         }</td>`;
