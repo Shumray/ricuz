@@ -1009,7 +1009,10 @@ class BudgetSystem {
                     if (result.confirmed) {
                         isNewItemConfirmed = true;
                         // Add to mappings with selected category
-                        this.mappings.set(item, result.category);
+                        this.mappings.set(item, {
+                            category: result.category,
+                            includeInMonthlyExpenses: true
+                        });
                         this.saveData();
                         this.updateMappingTable();
                         this.showNotification(`הפריט "${item}" נוסף למיפויים בקטגוריה "${result.category}"`, 'success');
