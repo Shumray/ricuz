@@ -4963,27 +4963,32 @@ class BudgetSystem {
         console.log('Categories list:', categories);
         console.log('✅ Transactions processing completed successfully!');
         
-        // Calculate monthly totals (sum of all categories - already signed correctly)
+        // Separate expense and income categories
+        const expenseCategories = categories.filter(cat => (categoryTotals[cat] || 0) < 0);
+        const incomeCategories = categories.filter(cat => (categoryTotals[cat] || 0) > 0);
+        
+        // Calculate monthly totals
         const monthlyTotals = {};
+        
         for (let month = 1; month <= 12; month++) {
             monthlyTotals[month] = categories
                 .reduce((sum, cat) => sum + ((monthlyData[month] && monthlyData[month][cat]) || 0), 0);
         }
         
-        // Build HTML table
+        // Build HTML table - ALL CATEGORIES
         let tableHTML = `
             <table>
                 <thead>
                     <tr>
                         <th style="width: 100px;">חודש</th>
                         ${categories.map(cat => `<th style="min-width: 80px;">${cat}</th>`).join('')}
-                        <th style="min-width: 90px; background: #1976d2;">יתרה נטו</th>
+                        <th style="min-width: 90px; background: #1976d2; color: white;">סיכום חודשי</th>
                     </tr>
                 </thead>
                 <tbody>
         `;
         
-        // Add rows for each month
+        // Add rows for each month - ALL CATEGORIES
         for (let month = 1; month <= 12; month++) {
             const monthName = this.getMonthName(month);
             tableHTML += `
@@ -5004,33 +5009,41 @@ class BudgetSystem {
             `;
         }
         
-        // Add totals row - calculate net as sum of all categories (already signed correctly)
-        const annualNet = categories.reduce((sum, cat) => sum + (categoryTotals[cat] || 0), 0);
+        // Calculate totals
+        const totalExpenses = expenseCategories.reduce((sum, cat) => sum + (categoryTotals[cat] || 0), 0);
+        const totalIncome = incomeCategories.reduce((sum, cat) => sum + (categoryTotals[cat] || 0), 0);
+        const annualNet = totalIncome + totalExpenses;
         
-        // Calculate income and expense totals for statistics
-        const incomeTotal = categories
-            .reduce((sum, cat) => {
-                const amount = categoryTotals[cat] || 0;
-                return sum + (amount > 0 ? amount : 0);
-            }, 0);
-        const expenseTotal = categories
-            .reduce((sum, cat) => {
-                const amount = categoryTotals[cat] || 0;
-                return sum + (amount < 0 ? Math.abs(amount) : 0);
-            }, 0);
-        
+        // Add expense totals row
         tableHTML += `
-                <tr class="total-row">
-                    <td class="month-name">סה״כ שנתי</td>
+                <tr class="total-row" style="background: #ffebee;">
+                    <td class="month-name" style="font-weight: 700; color: #c62828;">סה״כ הוצאות</td>
+                    ${categories.map(cat => {
+                        const amount = categoryTotals[cat] || 0;
+                        const isExpense = amount < 0;
+                        return `<td class="category-total ${isExpense ? 'expense-cell' : ''}" style="font-weight: 700;">${
+                            isExpense ? this.formatCurrency(amount) : '-'
+                        }</td>`;
+                    }).join('')}
+                    <td class="category-total" style="background: #f44336; color: white; font-weight: 700;">
+                        ${this.formatCurrency(totalExpenses)}
+                    </td>
+                </tr>
+        `;
+        
+        // Add income totals row
+        tableHTML += `
+                <tr class="total-row" style="background: #e8f5e8;">
+                    <td class="month-name" style="font-weight: 700; color: #2e7d32;">סה״כ הכנסות</td>
                     ${categories.map(cat => {
                         const amount = categoryTotals[cat] || 0;
                         const isIncome = amount > 0;
-                        return `<td class="category-total ${isIncome ? 'income-total' : ''}">${
-                            amount === 0 ? '-' : this.formatCurrency(amount)
+                        return `<td class="category-total ${isIncome ? 'income-cell' : ''}" style="font-weight: 700;">${
+                            isIncome ? this.formatCurrency(amount) : '-'
                         }</td>`;
                     }).join('')}
-                    <td class="category-total ${annualNet >= 0 ? 'positive' : 'negative'}" style="background: ${annualNet >= 0 ? '#4caf50' : '#f44336'}; color: white;">
-                        ${this.formatCurrency(annualNet)}
+                    <td class="category-total" style="background: #4caf50; color: white; font-weight: 700;">
+                        ${this.formatCurrency(totalIncome)}
                     </td>
                 </tr>
             </tbody>
@@ -5045,14 +5058,15 @@ class BudgetSystem {
         console.log('✅ Container innerHTML set successfully! Table should now be visible.');
         
         // Find top expense category (categories with negative totals)
-        const expenseCategoryData = categories
-            .filter(cat => (categoryTotals[cat] || 0) < 0)
+        const expenseCategoryData = expenseCategories
             .map(cat => ({ category: cat, amount: Math.abs(categoryTotals[cat] || 0) }))
             .sort((a, b) => b.amount - a.amount);
         const topExpenseCategory = expenseCategoryData.length > 0 ? expenseCategoryData[0].category : 'אין נתונים';
         
         // Add summary statistics using already calculated values
-        const netAmount = annualNet; // Use the already calculated value
+        const netAmount = annualNet;
+        const incomeTotal = totalIncome;
+        const expenseTotal = Math.abs(totalExpenses);
         
         // Add summary statistics
         const statsHTML = `
