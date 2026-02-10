@@ -2325,6 +2325,7 @@ class BudgetSystem {
         this.updateMonthlyKPIs(selectedMonth);
         this.updateAnnualKPIs();
         this.updateCategoryBreakdown(selectedMonth);
+        this.updateMonthlyTrend();
         this.updateAnnualSummaryTable();
     }
 
@@ -2412,6 +2413,121 @@ class BudgetSystem {
             `;
             container.appendChild(item);
         });
+    }
+
+    updateMonthlyTrend() {
+        const container = document.getElementById('monthlyTrend');
+        
+        // Get transactions for current year only
+        const yearTransactions = this.transactions.filter(t => {
+            const transactionYear = t.year || this.currentYear;
+            return transactionYear === this.currentYear;
+        });
+        
+        if (yearTransactions.length === 0) {
+            container.innerHTML = '<p style="text-align: center; color: #666;">אין נתונים לשנה זו</p>';
+            return;
+        }
+        
+        // Calculate monthly totals
+        const monthlyData = {};
+        for (let month = 1; month <= 12; month++) {
+            monthlyData[month] = {
+                income: 0,
+                expenses: 0,
+                net: 0
+            };
+        }
+        
+        yearTransactions.forEach(t => {
+            if (t.type === 'income') {
+                monthlyData[t.month].income += t.amount;
+            } else if (t.type === 'expense') {
+                monthlyData[t.month].expenses += Math.abs(t.amount);
+            }
+        });
+        
+        // Calculate net for each month
+        Object.keys(monthlyData).forEach(month => {
+            monthlyData[month].net = monthlyData[month].income - monthlyData[month].expenses;
+        });
+        
+        // Find max value for scaling
+        const maxValue = Math.max(
+            ...Object.values(monthlyData).map(d => Math.max(d.income, d.expenses))
+        );
+        
+        // Build HTML
+        container.innerHTML = '';
+        
+        // Month names
+        const monthNames = ['ינו', 'פבר', 'מרץ', 'אפר', 'מאי', 'יונ', 'יול', 'אוג', 'ספט', 'אוק', 'נוב', 'דצמ'];
+        
+        Object.keys(monthlyData).forEach(month => {
+            const data = monthlyData[month];
+            const hasData = data.income > 0 || data.expenses > 0;
+            
+            const monthDiv = document.createElement('div');
+            monthDiv.className = 'trend-month';
+            monthDiv.style.cssText = 'display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 10px; min-width: 70px;';
+            
+            // Bar container
+            const barsDiv = document.createElement('div');
+            barsDiv.style.cssText = 'display: flex; gap: 4px; height: 120px; align-items: flex-end;';
+            
+            // Income bar
+            const incomeBar = document.createElement('div');
+            const incomeHeight = maxValue > 0 ? (data.income / maxValue) * 100 : 0;
+            incomeBar.style.cssText = `width: 20px; background-color: #4caf50; height: ${incomeHeight}%; border-radius: 3px 3px 0 0; position: relative;`;
+            incomeBar.title = `הכנסה: ${this.formatCurrency(data.income)}`;
+            
+            // Expense bar
+            const expenseBar = document.createElement('div');
+            const expenseHeight = maxValue > 0 ? (data.expenses / maxValue) * 100 : 0;
+            expenseBar.style.cssText = `width: 20px; background-color: #f44336; height: ${expenseHeight}%; border-radius: 3px 3px 0 0; position: relative;`;
+            expenseBar.title = `הוצאות: ${this.formatCurrency(data.expenses)}`;
+            
+            barsDiv.appendChild(incomeBar);
+            barsDiv.appendChild(expenseBar);
+            
+            // Month name
+            const monthLabel = document.createElement('div');
+            monthLabel.textContent = monthNames[month - 1];
+            monthLabel.style.cssText = 'font-size: 0.85rem; font-weight: 500;';
+            
+            // Net amount
+            const netLabel = document.createElement('div');
+            netLabel.textContent = hasData ? this.formatCurrency(data.net) : '-';
+            netLabel.style.cssText = `font-size: 0.75rem; color: ${data.net >= 0 ? '#4caf50' : '#f44336'}; font-weight: 600;`;
+            
+            monthDiv.appendChild(barsDiv);
+            monthDiv.appendChild(monthLabel);
+            monthDiv.appendChild(netLabel);
+            
+            container.appendChild(monthDiv);
+        });
+        
+        // Add legend
+        const legend = document.createElement('div');
+        legend.style.cssText = 'display: flex; gap: 20px; justify-content: center; margin-top: 15px; font-size: 0.9rem;';
+        legend.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 5px;">
+                <div style="width: 15px; height: 15px; background-color: #4caf50; border-radius: 2px;"></div>
+                <span>הכנסה</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 5px;">
+                <div style="width: 15px; height: 15px; background-color: #f44336; border-radius: 2px;"></div>
+                <span>הוצאה</span>
+            </div>
+        `;
+        container.appendChild(legend);
+        
+        // Add styles for trend container
+        container.style.display = 'flex';
+        container.style.flexWrap = 'wrap';
+        container.style.gap = '5px';
+        container.style.justifyContent = 'space-around';
+        container.style.padding = '10px';
     }
 
     // Utility functions
