@@ -1445,18 +1445,18 @@ class BudgetSystem {
             }
         });
         
-        // Hide summary if no colors are selected
-        if (selectedColors.length === 0) {
-            summaryDiv.style.display = 'none';
-            return;
-        }
-        
-        // Show summary when colors are selected
+        // Always show the summary div (so checkboxes are visible)
         summaryDiv.style.display = 'block';
         
         // Get selected month for later use
         const selectedMonth = document.getElementById('dataEntryMonthSelect')?.value;
         const hasSelectedMonth = selectedMonth && selectedMonth !== 'all';
+        
+        // If no colors are selected, show empty content
+        if (selectedColors.length === 0) {
+            summaryContent.innerHTML = '<p style="color: #999; font-style: italic;">בחר צבעים כדי לראות סיכום</p>';
+            return;
+        }
         
         const colorNames = {
             'yellow': '🟨 צהוב',
