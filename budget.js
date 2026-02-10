@@ -1435,20 +1435,12 @@ class BudgetSystem {
             }
         });
         
-        // Check if any color has transactions
-        const hasColors = Object.values(colorTotals).some(v => v !== 0);
+        // Always show summary when in data entry view
+        summaryDiv.style.display = 'block';
         
-        // Check if a specific month is selected
+        // Get selected month for later use
         const selectedMonth = document.getElementById('dataEntryMonthSelect')?.value;
         const hasSelectedMonth = selectedMonth && selectedMonth !== 'all';
-        
-        // Hide summary only if no colors AND no specific month selected
-        if (!hasColors && !hasSelectedMonth) {
-            summaryDiv.style.display = 'none';
-            return;
-        }
-        
-        summaryDiv.style.display = 'block';
         
         const colorNames = {
             'yellow': '🟨 צהוב',
@@ -1457,19 +1449,20 @@ class BudgetSystem {
             'pink': '🟪 ורוד'
         };
         
-        let htmlContent = Object.entries(colorTotals)
-            .filter(([color, total]) => total !== 0 && selectedColors.includes(color))
-            .map(([color, total]) => {
-                const count = colorCounts[color];
-                return `
-                    <div style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: white; border-radius: 5px; border-right: 4px solid ${this.getColorCode(color)};">
-                        <span style="font-weight: 500;">${colorNames[color]} (${count}):</span>
-                        <span style="font-size: 1.1rem; font-weight: 600; color: ${total >= 0 ? '#4caf50' : '#f44336'};">
-                            ${this.formatCurrency(total)}
-                        </span>
-                    </div>
-                `;
-            }).join('');
+        // Show all selected colors, even if they have 0 transactions
+        let htmlContent = selectedColors.map(color => {
+            const total = colorTotals[color] || 0;
+            const count = colorCounts[color] || 0;
+            
+            return `
+                <div style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: white; border-radius: 5px; border-right: 4px solid ${this.getColorCode(color)};">
+                    <span style="font-weight: 500;">${colorNames[color]} (${count}):</span>
+                    <span style="font-size: 1.1rem; font-weight: 600; color: ${total >= 0 ? '#4caf50' : '#f44336'};">
+                        ${this.formatCurrency(total)}
+                    </span>
+                </div>
+            `;
+        }).join('');
         
         // Add total summary of selected colors only
         const totalSelectedColors = Object.entries(colorTotals)
@@ -1479,7 +1472,8 @@ class BudgetSystem {
             .filter(([color, _]) => selectedColors.includes(color))
             .reduce((sum, [_, val]) => sum + val, 0);
         
-        if (totalSelectedColors !== 0) {
+        // Always show total if colors are selected
+        if (selectedColors.length > 0) {
             htmlContent += `
                 <div style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #e3f2fd; border-radius: 5px; border-right: 4px solid #1976d2; margin-top: 8px; font-weight: 600;">
                     <span style="font-weight: 600;">סה"כ צבעים נבחרים (${totalSelectedCount}):</span>
@@ -1501,7 +1495,7 @@ class BudgetSystem {
             const prevClosingBalance = this.calculateClosingBalance(prevMonth, prevYear);
             
             // Add colored items total to previous month's closing balance
-            const balanceByColors = prevClosingBalance + totalAllColors;
+            const balanceByColors = prevClosingBalance + totalSelectedColors;
             
             htmlContent += `
                 <div style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #e3f2fd; border-radius: 5px; border-right: 4px solid #1976d2; margin-top: 8px; font-weight: 600;">
