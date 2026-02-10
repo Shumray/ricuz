@@ -1408,7 +1408,8 @@ class BudgetSystem {
     // Reset all color selections
     resetColorSelections() {
         document.querySelectorAll('.color-check').forEach(cb => {
-            cb.checked = false;
+            // Set default: green, blue, pink are checked; yellow is not
+            cb.checked = (cb.value === 'green' || cb.value === 'blue' || cb.value === 'pink');
         });
         this.saveSelectedColors();
     }
