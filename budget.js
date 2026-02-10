@@ -5044,6 +5044,13 @@ class BudgetSystem {
         container.innerHTML = tableHTML;
         console.log('✅ Container innerHTML set successfully! Table should now be visible.');
         
+        // Find top expense category (categories with negative totals)
+        const expenseCategoryData = categories
+            .filter(cat => (categoryTotals[cat] || 0) < 0)
+            .map(cat => ({ category: cat, amount: Math.abs(categoryTotals[cat] || 0) }))
+            .sort((a, b) => b.amount - a.amount);
+        const topExpenseCategory = expenseCategoryData.length > 0 ? expenseCategoryData[0].category : 'אין נתונים';
+        
         // Add summary statistics using already calculated values
         const netAmount = annualNet; // Use the already calculated value
         
@@ -5077,10 +5084,7 @@ class BudgetSystem {
                 <div style="background: #f3e5f5; padding: 15px; border-radius: 8px; text-align: center;">
                     <div style="font-size: 0.9rem; color: #7b1fa2; margin-bottom: 5px;">קטגוריית הוצאה מובילה</div>
                     <div style="font-size: 0.9rem; font-weight: 600; color: #4a148c;">
-                        ${expenseCategories.reduce((max, cat) => 
-                            categoryTotals[cat] > max.amount ? {category: cat, amount: categoryTotals[cat]} : max, 
-                            {category: '', amount: 0}
-                        ).category || 'אין נתונים'}
+                        ${topExpenseCategory}
                     </div>
                 </div>
                 <div style="background: #e8f5e8; padding: 15px; border-radius: 8px; text-align: center;">
