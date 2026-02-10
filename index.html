@@ -172,19 +172,6 @@
                                 <input type="number" id="amount" step="0.01" placeholder="סכום בשקלים" required>
                             </div>
                             <div class="form-group">
-                                <label>סוג</label>
-                                <div style="display: flex; gap: 20px; margin-top: 8px;">
-                                    <label class="radio-label" style="display: flex; align-items: center; cursor: pointer;">
-                                        <input type="radio" name="transactionType" value="expense" id="typeExpense" checked style="margin-left: 5px; cursor: pointer;">
-                                        <span>הוצאה</span>
-                                    </label>
-                                    <label class="radio-label" style="display: flex; align-items: center; cursor: pointer;">
-                                        <input type="radio" name="transactionType" value="income" id="typeIncome" style="margin-left: 5px; cursor: pointer;">
-                                        <span>הכנסה</span>
-                                    </label>
-                                </div>
-                            </div>
-                            <div class="form-group">
                                 <label for="note">הערה</label>
                                 <input type="text" id="note" placeholder="הערה (אופציונלי)">
                             </div>
@@ -197,6 +184,19 @@
                                     <option value="blue">🔵 כחול</option>
                                     <option value="pink">🩷 ורוד</option>
                                 </select>
+                            </div>
+                            <div class="form-group">
+                                <label>סוג</label>
+                                <div style="display: flex; gap: 20px; margin-top: 8px;">
+                                    <label class="radio-label" style="display: flex; align-items: center; cursor: pointer;">
+                                        <input type="radio" name="transactionType" value="expense" id="typeExpense" checked style="margin-left: 5px; cursor: pointer;">
+                                        <span>הוצאה</span>
+                                    </label>
+                                    <label class="radio-label" style="display: flex; align-items: center; cursor: pointer;">
+                                        <input type="radio" name="transactionType" value="income" id="typeIncome" style="margin-left: 5px; cursor: pointer;">
+                                        <span>הכנסה</span>
+                                    </label>
+                                </div>
                             </div>
                             <div class="form-group">
                                 <div class="payment-method-section">
