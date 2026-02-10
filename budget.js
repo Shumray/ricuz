@@ -38,6 +38,7 @@ class BudgetSystem {
         this.loadData();
         this.initializeYearSelector();
         this.initializeEventListeners();
+        this.loadSelectedColors(); // Load color selection from localStorage
         this.setCurrentMonth();
         this.updateDisplay();
     }
@@ -391,6 +392,14 @@ class BudgetSystem {
         // Update report producer details
         document.getElementById('updateProducerBtn').addEventListener('click', () => {
             this.updateReportProducer();
+        });
+
+        // Color checkboxes for summary
+        document.querySelectorAll('.color-check').forEach(checkbox => {
+            checkbox.addEventListener('change', () => {
+                this.saveSelectedColors();
+                this.updateTransactionsTable();
+            });
         });
     }
 
@@ -1361,12 +1370,48 @@ class BudgetSystem {
         }
     }
     
+    // Get selected colors from checkboxes
+    getSelectedColors() {
+        const checkboxes = document.querySelectorAll('.color-check');
+        const selected = [];
+        checkboxes.forEach(cb => {
+            if (cb.checked) {
+                selected.push(cb.value);
+            }
+        });
+        return selected.length > 0 ? selected : ['yellow', 'green', 'blue', 'pink']; // Default all if none selected
+    }
+    
+    // Save selected colors to localStorage
+    saveSelectedColors() {
+        const selected = this.getSelectedColors();
+        localStorage.setItem('selectedColors', JSON.stringify(selected));
+    }
+    
+    // Load selected colors from localStorage
+    loadSelectedColors() {
+        const saved = localStorage.getItem('selectedColors');
+        if (saved) {
+            try {
+                const selected = JSON.parse(saved);
+                document.querySelectorAll('.color-check').forEach(cb => {
+                    cb.checked = selected.includes(cb.value);
+                });
+            } catch (e) {
+                console.error('Error loading selected colors:', e);
+            }
+        }
+    }
+    
     // Update color summary
     updateColorSummary(transactions) {
         const summaryDiv = document.getElementById('colorSummary');
         const summaryContent = document.getElementById('colorSummaryContent');
         
         if (!summaryDiv || !summaryContent) return;
+        
+        // Get selected colors from checkboxes
+        const selectedColors = this.getSelectedColors();
         
         // Calculate totals and counts by color
         const colorTotals = {
@@ -1413,7 +1458,7 @@ class BudgetSystem {
         };
         
         let htmlContent = Object.entries(colorTotals)
-            .filter(([_, total]) => total !== 0)
+            .filter(([color, total]) => total !== 0 && selectedColors.includes(color))
             .map(([color, total]) => {
                 const count = colorCounts[color];
                 return `
@@ -1426,16 +1471,20 @@ class BudgetSystem {
                 `;
             }).join('');
         
-        // Add total summary of all colors
-        const totalAllColors = Object.values(colorTotals).reduce((sum, val) => sum + val, 0);
-        const totalCount = Object.values(colorCounts).reduce((sum, val) => sum + val, 0);
+        // Add total summary of selected colors only
+        const totalSelectedColors = Object.entries(colorTotals)
+            .filter(([color, _]) => selectedColors.includes(color))
+            .reduce((sum, [_, val]) => sum + val, 0);
+        const totalSelectedCount = Object.entries(colorCounts)
+            .filter(([color, _]) => selectedColors.includes(color))
+            .reduce((sum, [_, val]) => sum + val, 0);
         
-        if (totalAllColors !== 0) {
+        if (totalSelectedColors !== 0) {
             htmlContent += `
-                <div style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #f5f5f5; border-radius: 5px; border-right: 4px solid #666; margin-top: 8px; font-weight: 600;">
-                    <span style="font-weight: 600;">סה"כ צבעים (${totalCount}):</span>
-                    <span style="font-size: 1.1rem; font-weight: 700; color: ${totalAllColors >= 0 ? '#4caf50' : '#f44336'};">
-                        ${this.formatCurrency(totalAllColors)}
+                <div style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #e3f2fd; border-radius: 5px; border-right: 4px solid #1976d2; margin-top: 8px; font-weight: 600;">
+                    <span style="font-weight: 600;">סה"כ צבעים נבחרים (${totalSelectedCount}):</span>
+                    <span style="font-size: 1.1rem; font-weight: 700; color: ${totalSelectedColors >= 0 ? '#2e7d32' : '#c62828'};">
+                        ${this.formatCurrency(totalSelectedColors)}
                     </span>
                 </div>
             `;

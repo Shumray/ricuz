@@ -231,7 +231,27 @@
                 <div class="table-container">
                     <!-- Color Summary -->
                     <div id="colorSummary" style="margin-bottom: 15px; padding: 15px; background: #f5f5f5; border-radius: 8px; display: none;">
-                        <h4 style="margin: 0 0 10px 0; color: #1f4e79;">סיכום לפי צבעים:</h4>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                            <h4 style="margin: 0; color: #1f4e79;">סיכום לפי צבעים:</h4>
+                            <div style="display: flex; gap: 15px; align-items: center;">
+                                <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-size: 0.9rem;">
+                                    <input type="checkbox" id="colorCheckYellow" class="color-check" value="yellow" checked style="cursor: pointer;">
+                                    <span>🟨 צהוב</span>
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-size: 0.9rem;">
+                                    <input type="checkbox" id="colorCheckGreen" class="color-check" value="green" checked style="cursor: pointer;">
+                                    <span>🟩 ירוק</span>
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-size: 0.9rem;">
+                                    <input type="checkbox" id="colorCheckBlue" class="color-check" value="blue" checked style="cursor: pointer;">
+                                    <span>🟦 כחול</span>
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; font-size: 0.9rem;">
+                                    <input type="checkbox" id="colorCheckPink" class="color-check" value="pink" checked style="cursor: pointer;">
+                                    <span>🟪 ורוד</span>
+                                </label>
+                            </div>
+                        </div>
                         <div id="colorSummaryContent" style="display: flex; gap: 20px; flex-wrap: wrap;"></div>
                     </div>
                     
