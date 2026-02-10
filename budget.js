@@ -4967,11 +4967,12 @@ class BudgetSystem {
         const expenseCategories = categories.filter(cat => (categoryTotals[cat] || 0) < 0);
         const incomeCategories = categories.filter(cat => (categoryTotals[cat] || 0) > 0);
         
-        // Calculate monthly totals
+        // Calculate monthly totals (expenses only - without income categories)
         const monthlyTotals = {};
         
         for (let month = 1; month <= 12; month++) {
             monthlyTotals[month] = categories
+                .filter(cat => cat !== 'משכורת + ביטוח לאומי') // Exclude income
                 .reduce((sum, cat) => sum + ((monthlyData[month] && monthlyData[month][cat]) || 0), 0);
         }
         
@@ -4982,7 +4983,7 @@ class BudgetSystem {
                     <tr>
                         <th style="width: 100px;">חודש</th>
                         ${categories.map(cat => `<th style="min-width: 80px;">${cat}</th>`).join('')}
-                        <th style="min-width: 90px; background: #1976d2; color: white;">סיכום חודשי</th>
+                        <th style="min-width: 110px; background: #f44336; color: white;">סיכום הוצאות חודשי</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -5002,7 +5003,7 @@ class BudgetSystem {
                             amount === 0 ? '-' : this.formatCurrency(amount)
                         }</td>`;
                     }).join('')}
-                    <td class="total-monthly ${(monthlyTotals[month] || 0) >= 0 ? 'positive' : 'negative'}">${
+                    <td class="total-monthly negative">${
                         (monthlyTotals[month] === 0 || !monthlyTotals[month]) ? '-' : this.formatCurrency(monthlyTotals[month])
                     }</td>
                 </tr>
