@@ -2454,80 +2454,142 @@ class BudgetSystem {
         
         // Find max value for scaling
         const maxValue = Math.max(
-            ...Object.values(monthlyData).map(d => Math.max(d.income, d.expenses))
+            ...Object.values(monthlyData).map(d => Math.max(d.income, d.expenses)),
+            1000 // Minimum scale
         );
         
-        // Build HTML
+        // SVG dimensions
+        const width = 900;
+        const height = 250;
+        const padding = { top: 20, right: 20, bottom: 40, left: 60 };
+        const chartWidth = width - padding.left - padding.right;
+        const chartHeight = height - padding.top - padding.bottom;
+        
+        // Clear container
         container.innerHTML = '';
+        container.style.cssText = 'display: flex; flex-direction: column; align-items: center; padding: 10px;';
+        
+        // Create SVG
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('width', width);
+        svg.setAttribute('height', height);
+        svg.style.cssText = 'background: white; border-radius: 8px;';
         
         // Month names
         const monthNames = ['ינו', 'פבר', 'מרץ', 'אפר', 'מאי', 'יונ', 'יול', 'אוג', 'ספט', 'אוק', 'נוב', 'דצמ'];
         
-        Object.keys(monthlyData).forEach(month => {
+        // Draw grid lines (horizontal)
+        const gridLinesCount = 5;
+        for (let i = 0; i <= gridLinesCount; i++) {
+            const y = padding.top + (chartHeight / gridLinesCount) * i;
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('x1', padding.left);
+            line.setAttribute('y1', y);
+            line.setAttribute('x2', width - padding.right);
+            line.setAttribute('y2', y);
+            line.setAttribute('stroke', '#e0e0e0');
+            line.setAttribute('stroke-width', '1');
+            svg.appendChild(line);
+            
+            // Y-axis labels
+            const value = maxValue - (maxValue / gridLinesCount) * i;
+            const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            text.setAttribute('x', padding.left - 10);
+            text.setAttribute('y', y + 5);
+            text.setAttribute('text-anchor', 'end');
+            text.setAttribute('font-size', '11');
+            text.setAttribute('fill', '#666');
+            text.textContent = (value / 1000).toFixed(0) + 'K';
+            svg.appendChild(text);
+        }
+        
+        // Build income and expense line points
+        const incomePoints = [];
+        const expensePoints = [];
+        const netPoints = [];
+        
+        for (let month = 1; month <= 12; month++) {
             const data = monthlyData[month];
-            const hasData = data.income > 0 || data.expenses > 0;
+            const x = padding.left + ((month - 1) / 11) * chartWidth;
             
-            const monthDiv = document.createElement('div');
-            monthDiv.className = 'trend-month';
-            monthDiv.style.cssText = 'display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 10px; min-width: 70px;';
+            const incomeY = padding.top + chartHeight - (data.income / maxValue) * chartHeight;
+            const expenseY = padding.top + chartHeight - (data.expenses / maxValue) * chartHeight;
+            const netY = padding.top + chartHeight - ((data.net + maxValue) / (maxValue * 2)) * chartHeight;
             
-            // Bar container
-            const barsDiv = document.createElement('div');
-            barsDiv.style.cssText = 'display: flex; gap: 4px; height: 120px; align-items: flex-end;';
+            incomePoints.push(`${x},${incomeY}`);
+            expensePoints.push(`${x},${expenseY}`);
+            netPoints.push(`${x},${netY}`);
             
-            // Income bar
-            const incomeBar = document.createElement('div');
-            const incomeHeight = maxValue > 0 ? (data.income / maxValue) * 100 : 0;
-            incomeBar.style.cssText = `width: 20px; background-color: #4caf50; height: ${incomeHeight}%; border-radius: 3px 3px 0 0; position: relative;`;
-            incomeBar.title = `הכנסה: ${this.formatCurrency(data.income)}`;
+            // Draw X-axis labels
+            const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            text.setAttribute('x', x);
+            text.setAttribute('y', height - padding.bottom + 20);
+            text.setAttribute('text-anchor', 'middle');
+            text.setAttribute('font-size', '11');
+            text.setAttribute('fill', '#666');
+            text.textContent = monthNames[month - 1];
+            svg.appendChild(text);
             
-            // Expense bar
-            const expenseBar = document.createElement('div');
-            const expenseHeight = maxValue > 0 ? (data.expenses / maxValue) * 100 : 0;
-            expenseBar.style.cssText = `width: 20px; background-color: #f44336; height: ${expenseHeight}%; border-radius: 3px 3px 0 0; position: relative;`;
-            expenseBar.title = `הוצאות: ${this.formatCurrency(data.expenses)}`;
+            // Draw data points (circles)
+            // Income point
+            const incomeCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            incomeCircle.setAttribute('cx', x);
+            incomeCircle.setAttribute('cy', incomeY);
+            incomeCircle.setAttribute('r', '4');
+            incomeCircle.setAttribute('fill', '#4caf50');
+            incomeCircle.setAttribute('stroke', 'white');
+            incomeCircle.setAttribute('stroke-width', '2');
+            const incomeTitle = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+            incomeTitle.textContent = `${monthNames[month - 1]} - הכנסה: ${this.formatCurrency(data.income)}`;
+            incomeCircle.appendChild(incomeTitle);
+            svg.appendChild(incomeCircle);
             
-            barsDiv.appendChild(incomeBar);
-            barsDiv.appendChild(expenseBar);
-            
-            // Month name
-            const monthLabel = document.createElement('div');
-            monthLabel.textContent = monthNames[month - 1];
-            monthLabel.style.cssText = 'font-size: 0.85rem; font-weight: 500;';
-            
-            // Net amount
-            const netLabel = document.createElement('div');
-            netLabel.textContent = hasData ? this.formatCurrency(data.net) : '-';
-            netLabel.style.cssText = `font-size: 0.75rem; color: ${data.net >= 0 ? '#4caf50' : '#f44336'}; font-weight: 600;`;
-            
-            monthDiv.appendChild(barsDiv);
-            monthDiv.appendChild(monthLabel);
-            monthDiv.appendChild(netLabel);
-            
-            container.appendChild(monthDiv);
-        });
+            // Expense point
+            const expenseCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            expenseCircle.setAttribute('cx', x);
+            expenseCircle.setAttribute('cy', expenseY);
+            expenseCircle.setAttribute('r', '4');
+            expenseCircle.setAttribute('fill', '#f44336');
+            expenseCircle.setAttribute('stroke', 'white');
+            expenseCircle.setAttribute('stroke-width', '2');
+            const expenseTitle = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+            expenseTitle.textContent = `${monthNames[month - 1]} - הוצאות: ${this.formatCurrency(data.expenses)}`;
+            expenseCircle.appendChild(expenseTitle);
+            svg.appendChild(expenseCircle);
+        }
+        
+        // Draw income line
+        const incomeLine = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+        incomeLine.setAttribute('points', incomePoints.join(' '));
+        incomeLine.setAttribute('fill', 'none');
+        incomeLine.setAttribute('stroke', '#4caf50');
+        incomeLine.setAttribute('stroke-width', '2');
+        svg.insertBefore(incomeLine, svg.firstChild.nextSibling);
+        
+        // Draw expense line
+        const expenseLine = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+        expenseLine.setAttribute('points', expensePoints.join(' '));
+        expenseLine.setAttribute('fill', 'none');
+        expenseLine.setAttribute('stroke', '#f44336');
+        expenseLine.setAttribute('stroke-width', '2');
+        svg.insertBefore(expenseLine, svg.firstChild.nextSibling);
+        
+        container.appendChild(svg);
         
         // Add legend
         const legend = document.createElement('div');
-        legend.style.cssText = 'display: flex; gap: 20px; justify-content: center; margin-top: 15px; font-size: 0.9rem;';
+        legend.style.cssText = 'display: flex; gap: 30px; justify-content: center; margin-top: 15px; font-size: 0.9rem;';
         legend.innerHTML = `
-            <div style="display: flex; align-items: center; gap: 5px;">
-                <div style="width: 15px; height: 15px; background-color: #4caf50; border-radius: 2px;"></div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <div style="width: 30px; height: 3px; background-color: #4caf50;"></div>
                 <span>הכנסה</span>
             </div>
-            <div style="display: flex; align-items: center; gap: 5px;">
-                <div style="width: 15px; height: 15px; background-color: #f44336; border-radius: 2px;"></div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <div style="width: 30px; height: 3px; background-color: #f44336;"></div>
                 <span>הוצאה</span>
             </div>
         `;
         container.appendChild(legend);
-        
-        // Add styles for trend container
-        container.style.display = 'flex';
-        container.style.flexWrap = 'wrap';
-        container.style.gap = '5px';
-        container.style.justifyContent = 'space-around';
-        container.style.padding = '10px';
     }
 
     // Utility functions
