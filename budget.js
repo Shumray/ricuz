@@ -38,7 +38,7 @@ class BudgetSystem {
         this.loadData();
         this.initializeYearSelector();
         this.initializeEventListeners();
-        this.loadSelectedColors(); // Load color selection from localStorage
+        // Don't load color selections - start fresh each time
         this.setCurrentMonth();
         this.updateDisplay();
     }
@@ -345,6 +345,8 @@ class BudgetSystem {
                 this.lastSelectedMonth = selectedValue;
                 this.saveData();
             }
+            // Reset color selections when changing month
+            this.resetColorSelections();
             this.updateTransactionsTable();
         });
 
@@ -1379,7 +1381,7 @@ class BudgetSystem {
                 selected.push(cb.value);
             }
         });
-        return selected.length > 0 ? selected : ['yellow', 'green', 'blue', 'pink']; // Default all if none selected
+        return selected; // Return only selected colors, empty array if none
     }
     
     // Save selected colors to localStorage
@@ -1401,6 +1403,14 @@ class BudgetSystem {
                 console.error('Error loading selected colors:', e);
             }
         }
+    }
+    
+    // Reset all color selections
+    resetColorSelections() {
+        document.querySelectorAll('.color-check').forEach(cb => {
+            cb.checked = false;
+        });
+        this.saveSelectedColors();
     }
     
     // Update color summary
@@ -1435,7 +1445,13 @@ class BudgetSystem {
             }
         });
         
-        // Always show summary when in data entry view
+        // Hide summary if no colors are selected
+        if (selectedColors.length === 0) {
+            summaryDiv.style.display = 'none';
+            return;
+        }
+        
+        // Show summary when colors are selected
         summaryDiv.style.display = 'block';
         
         // Get selected month for later use
