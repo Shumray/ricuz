@@ -142,7 +142,17 @@ class BudgetSystem {
             'ביטוח לאומי ג"',
             'ביטוח לאומי ג״',
             'ביטוח לאומי ג',
-            'מענק עבודה'
+            'מענק עבודה',
+            'משיכת פקדון',
+            'משיכת פיקדון',
+            'משיכה מפקדון',
+            'משיכה מפיקדון',
+            'פרעון פקדון',
+            'פרעון פיקדון',
+            'ריבית מפקדון',
+            'ריבית מפיקדון',
+            'ריבית פקדון',
+            'ריבית פיקדון'
         ]);
 
         const defaultMappings = [
@@ -185,10 +195,20 @@ class BudgetSystem {
             ['ארנונה', 'מיסים', false],
             ['עיריה', 'מיסים', false],
             ['הפקדה לחסכון', 'הפקדה לחסכון בבנק', true],
+            ['הפקדה לפיקדון', 'הפקדה לחסכון בבנק', true],
             ['הפקדה לפקדון', 'הפקדה לחסכון בבנק', true],
+            ['הפקדה פיקדון', 'הפקדה לחסכון בבנק', true],
+            ['הפקדה פקדון', 'הפקדה לחסכון בבנק', true],
+            ['משיכת פיקדון', 'הפקדה לחסכון בבנק', true],
             ['משיכת פקדון', 'הפקדה לחסכון בבנק', true],
+            ['משיכה מפיקדון', 'הפקדה לחסכון בבנק', true],
+            ['משיכה מפקדון', 'הפקדה לחסכון בבנק', true],
+            ['פרעון פיקדון', 'הפקדה לחסכון בבנק', true],
             ['פרעון פקדון', 'הפקדה לחסכון בבנק', true],
-            ['ריבית מפקדון', 'הפקדה לחסכון בבנק', true]
+            ['ריבית מפיקדון', 'הפקדה לחסכון בבנק', true],
+            ['ריבית מפקדון', 'הפקדה לחסכון בבנק', true],
+            ['ריבית פיקדון', 'הפקדה לחסכון בבנק', true],
+            ['ריבית פקדון', 'הפקדה לחסכון בבנק', true]
         ];
 
         defaultMappings.forEach(([item, category, includeInMonthlyExpenses]) => {
@@ -435,6 +455,13 @@ class BudgetSystem {
             // Set color
             document.getElementById('transactionColor').value = editData.color || 'none';
             
+            // Set transaction type radio button
+            if (editData.type === 'income') {
+                document.getElementById('typeIncome').checked = true;
+            } else {
+                document.getElementById('typeExpense').checked = true;
+            }
+            
             // Change form title and button text
             document.querySelector('#transactionForm h3').textContent = 'עריכת עסקה';
             document.querySelector('#newTransactionForm button[type="submit"]').innerHTML = '💾 עדכן';
@@ -452,6 +479,9 @@ class BudgetSystem {
             // Use last selected color
             document.getElementById('transactionColor').value = this.lastSelectedColor;
             
+            // Set default transaction type to expense
+            document.getElementById('typeExpense').checked = true;
+            
             document.querySelector('#transactionForm h3').textContent = 'עסקה חדשה';
             document.querySelector('#newTransactionForm button[type="submit"]').innerHTML = '💾 שמור';
             delete document.getElementById('newTransactionForm').dataset.editId;
@@ -466,6 +496,7 @@ class BudgetSystem {
         document.getElementById('newTransactionForm').reset();
         document.getElementById('isCheck').checked = false;
         document.getElementById('isSpecialCheckItem').checked = false;
+        document.getElementById('typeExpense').checked = true; // Reset to default type
         // Don't reset color - it will be set from lastSelectedColor when opening next time
         delete this.currentCheckData;
         
@@ -497,7 +528,8 @@ class BudgetSystem {
             note: document.getElementById('note').value.trim(),
             isCheck: document.getElementById('isCheck').checked,
             isSpecialCheckItem: document.getElementById('isSpecialCheckItem').checked,
-            color: document.getElementById('transactionColor').value
+            color: document.getElementById('transactionColor').value,
+            type: document.querySelector('input[name="transactionType"]:checked').value
         };
 
         // Validate data
@@ -538,8 +570,8 @@ class BudgetSystem {
         }
 
 
-        // Determine type automatically
-        const type = this.getTransactionType(formData.item);
+        // Use manually selected type
+        const type = formData.type;
 
         // Check if the item name is exactly "שיק" (without parentheses)
         let finalNote = formData.note;
@@ -621,6 +653,11 @@ class BudgetSystem {
         // Normalize item name - remove quote characters
         const normalizedItem = item.trim().replace(/["״]/g, '');
         
+        // Special handling for deposit-related items (פקדון/פיקדון)
+        if (normalizedItem.includes('פקדון') || normalizedItem.includes('פיקדון')) {
+            return 'הפקדה לחסכון בבנק';
+        }
+        
         // Special handling for "ביטוח לאומי" variants
         if (normalizedItem === 'ביטוח לאומי' || normalizedItem === 'ביטוח לאומי ג' || normalizedItem.startsWith('ביטוח לאומי ג')) {
             return 'ביטוח לאומי';
@@ -663,6 +700,23 @@ class BudgetSystem {
 
     // Determine transaction type based on item name
     getTransactionType(item) {
+        // Normalize item name
+        const normalizedItem = item.trim().toLowerCase();
+        
+        // Special handling: משיכה/פרעון/ריבית מפקדון = הכנסה
+        if (normalizedItem.includes('פקדון') || normalizedItem.includes('פיקדון')) {
+            // משיכת פקדון, פרעון פקדון, ריבית מפקדון = הכנסה
+            if (normalizedItem.includes('משיכ') || 
+                normalizedItem.includes('פרעון') || 
+                normalizedItem.includes('ריבית')) {
+                return 'income';
+            }
+            // הפקדה לפקדון = הוצאה
+            if (normalizedItem.includes('הפקד')) {
+                return 'expense';
+            }
+        }
+        
         // Check for exact matches first
         if (this.incomeItems.has(item)) {
             return 'income';
@@ -2588,6 +2642,41 @@ class BudgetSystem {
                 }
 
                 console.log(`Loaded ${this.transactions.length} transactions for year ${this.currentYear}`);
+                
+                // Fix transaction types for deposit-related items
+                let typesFixed = 0;
+                this.transactions.forEach(transaction => {
+                    const itemLower = transaction.item.toLowerCase();
+                    // Check if this is a deposit withdrawal/redemption/interest that should be income
+                    if ((itemLower.includes('פקדון') || itemLower.includes('פיקדון')) &&
+                        (itemLower.includes('משיכ') || itemLower.includes('פרעון') || itemLower.includes('ריבית'))) {
+                        if (transaction.type !== 'income') {
+                            transaction.type = 'income';
+                            // Ensure amount is positive for income
+                            if (transaction.amount < 0) {
+                                transaction.amount = Math.abs(transaction.amount);
+                            }
+                            typesFixed++;
+                        }
+                    }
+                    // Check if this is a deposit placement that should be expense
+                    else if ((itemLower.includes('פקדון') || itemLower.includes('פיקדון')) &&
+                             itemLower.includes('הפקד')) {
+                        if (transaction.type !== 'expense') {
+                            transaction.type = 'expense';
+                            // Ensure amount is negative for expense
+                            if (transaction.amount > 0) {
+                                transaction.amount = -Math.abs(transaction.amount);
+                            }
+                            typesFixed++;
+                        }
+                    }
+                });
+                
+                if (typesFixed > 0) {
+                    console.log(`✅ Fixed ${typesFixed} transaction types for deposit items`);
+                    dataUpdated = true;
+                }
                 
                 // Save if data was updated with new defaults
                 if (dataUpdated) {

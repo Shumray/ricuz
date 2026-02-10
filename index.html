@@ -170,9 +170,19 @@
                             <div class="form-group">
                                 <label for="amount">סכום</label>
                                 <input type="number" id="amount" step="0.01" placeholder="סכום בשקלים" required>
-                                <small style="color: #666; margin-top: 5px;">
-                                    הסוג יקבע אוטומטית - הכנסות: משכורת, ביטוח לאומי, מענק עבודה
-                                </small>
+                            </div>
+                            <div class="form-group">
+                                <label>סוג</label>
+                                <div style="display: flex; gap: 20px; margin-top: 8px;">
+                                    <label class="radio-label" style="display: flex; align-items: center; cursor: pointer;">
+                                        <input type="radio" name="transactionType" value="expense" id="typeExpense" checked style="margin-left: 5px; cursor: pointer;">
+                                        <span>הוצאה</span>
+                                    </label>
+                                    <label class="radio-label" style="display: flex; align-items: center; cursor: pointer;">
+                                        <input type="radio" name="transactionType" value="income" id="typeIncome" style="margin-left: 5px; cursor: pointer;">
+                                        <span>הכנסה</span>
+                                    </label>
+                                </div>
                             </div>
                             <div class="form-group">
                                 <label for="note">הערה</label>
