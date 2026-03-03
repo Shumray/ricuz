@@ -1909,270 +1909,687 @@ class BudgetSystem {
         });
     }
 
-    // Count how many transactions use a specific item
-    countTransactionsUsingItem(item) {
-        return this.transactions.filter(t => t.item === item).length;
+    // Monthly view
+    updateMonthlyView() {
+        const selectedMonth = parseInt(document.getElementById('monthSelect').value);
+        this.updateBalanceSummary(selectedMonth);
+        this.updateCategorySummary(selectedMonth);
+        this.updateActualExpensesSummary(selectedMonth);
+        this.updateMonthlyTransactions(selectedMonth);
+        this.updateCheckPaymentsSummary(selectedMonth);
+        this.updateImportedCheckItemsMonthly(selectedMonth);
     }
 
-    updateAnnualSummaryTable() {
-        const container = document.getElementById('annualSummaryTable');
-        if (!container) {
-            console.error('Annual summary table container not found');
+    // Update balance summary table
+    updateBalanceSummary(month) {
+        const container = document.getElementById('balanceSummary');
+        // Filter transactions - handle both old data (without year) and new data (with year)
+        const monthlyTransactions = this.transactions.filter(t => {
+            const transactionYear = t.year || this.currentYear; // Use current year if no year specified
+            return t.month === month && transactionYear === this.currentYear;
+        });
+        
+        console.log(`Found ${monthlyTransactions.length} transactions for month ${month}, year ${this.currentYear}`);
+        
+        // Calculate totals
+        const income = monthlyTransactions
+            .filter(t => t.type === 'income')
+            .reduce((sum, t) => sum + t.amount, 0);
+        
+        const expenses = monthlyTransactions
+            .filter(t => t.type === 'expense')
+            .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+        
+        const transfers = monthlyTransactions
+            .filter(t => t.type === 'transfer')
+            .reduce((sum, t) => sum + t.amount, 0);
+        
+        // Get opening balance for this month, auto-set from previous month if not manually set
+        const key = `${this.currentYear}-${month}`;
+        let openingBalance = this.openingBalances.get(key);
+        if ((openingBalance === undefined || !this.manualOpeningBalances.has(key)) && month !== 1) {
+            // Auto-set from previous month (unless manually overridden)
+            const prevMonth = month === 1 ? 12 : month - 1;
+            const prevYear = month === 1 ? this.currentYear - 1 : this.currentYear;
+            const autoBalance = this.calculateClosingBalance(prevMonth, prevYear);
+            if (autoBalance !== 0) {
+                openingBalance = autoBalance;
+                this.openingBalances.set(key, autoBalance);
+                // Don't add to manualOpeningBalances - this is automatic
+                this.saveData();
+            } else {
+                openingBalance = 0;
+            }
+        } else if (openingBalance === undefined) {
+            openingBalance = 0;
+        }
+        
+        // Calculate closing balance with transfers
+        const netChange = income - expenses + transfers;
+        const closingBalance = openingBalance + netChange;
+        
+        // Get monthly notes
+        const monthlyNotes = this.getMonthlyNotes(month) || '';
+        
+        container.innerHTML = `
+            <div class="balance-row opening">
+                <span class="balance-label">
+                    <button class="settings-btn" onclick="budgetSystem.showOpeningBalanceModal(${month})" title="ערוך יתרת פתיחה">⚙️</button>
+                    יתרת עו"ש תחילת חודש:
+                </span>
+                <span class="balance-amount opening">${this.formatCurrency(openingBalance)}</span>
+            </div>
+            <div class="balance-row">
+                <span class="balance-label">סיכום הכנסות:</span>
+                <span class="balance-amount positive">${this.formatCurrency(income)}</span>
+            </div>
+            <div class="balance-row">
+                <span class="balance-label">סיכום הוצאות:</span>
+                <span class="balance-amount negative">${this.formatCurrency(expenses)}</span>
+            </div>
+            ${transfers !== 0 ? `
+            <div class="balance-row">
+                <span class="balance-label">העברות:</span>
+                <span class="balance-amount ${transfers >= 0 ? 'positive' : 'negative'}">${this.formatCurrency(transfers)}</span>
+            </div>` : ''}
+            <div class="balance-row net-change">
+                <span class="balance-label">שינוי נטו בחודש:</span>
+                <span class="balance-amount ${netChange >= 0 ? 'positive' : 'negative'}">${this.formatCurrency(netChange)}</span>
+            </div>
+            <div class="balance-row closing">
+                <span class="balance-label">יתרת עו"ש סוף חודש:</span>
+                <span class="balance-amount closing">${this.formatCurrency(closingBalance)}</span>
+            </div>
+            <div class="balance-notes">
+                <div class="notes-header">
+                    <span class="notes-label">הערות לחודש:</span>
+                    <button class="settings-btn" onclick="budgetSystem.showMonthlyNotesModal(${month})" title="ערוך הערות">📝</button>
+                </div>
+                <div class="notes-content">
+                    ${monthlyNotes || '<span style="color: #999; font-style: italic;">אין הערות</span>'}
+                </div>
+            </div>
+        `;
+    }
+
+    // Show modal to edit opening balance
+    showOpeningBalanceModal(month) {
+        const monthName = this.getMonthName(month);
+        
+        // Get current balance or calculate from previous month
+        const key = `${this.currentYear}-${month}`;
+        let currentBalance = this.openingBalances.get(key);
+        if (currentBalance === undefined && month !== 1) {
+            // Calculate from previous month but don't save yet
+            const prevMonth = month === 1 ? 12 : month - 1;
+            const prevYear = month === 1 ? this.currentYear - 1 : this.currentYear;
+            const autoBalance = this.calculateClosingBalance(prevMonth, prevYear);
+            currentBalance = autoBalance !== 0 ? autoBalance : 0;
+        } else if (currentBalance === undefined) {
+            currentBalance = 0;
+        }
+        
+        const showInfo = month !== 1; // Show info for all months except January
+        
+        const modal = document.createElement('div');
+        modal.className = 'settings-modal';
+        modal.style.display = 'flex';
+        modal.innerHTML = `
+            <div class="settings-content">
+                <h3 style="color: #1f4e79; margin-bottom: 15px;">יתרת פתיחה - ${monthName}</h3>
+                ${showInfo ? `
+                    <div style="background: #e8f5e8; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 2px solid #4caf50;">
+                        <p style="margin: 0 0 10px 0; font-weight: 500; color: #2e7d32;">ℹ️ מידע:</p>
+                        <p style="margin: 0; font-size: 0.9rem; color: #333;">
+                            יתרת הפתיחה מחושבת אוטומטית מיתרת הסגירה של ${this.getMonthName(month === 1 ? 12 : month - 1)}.
+                            תוכל לערוך את הסכום אם נדרש.
+                        </p>
+                    </div>
+                ` : ''}
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; margin-bottom: 8px; font-weight: 500;">יתרת עו"ש בתחילת ${monthName}:</label>
+                    <input type="number" id="openingBalanceInput" step="0.01" value="${currentBalance}" 
+                           style="width: 100%; padding: 10px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 1rem;">
+                </div>
+                <div style="display: flex; gap: 10px; justify-content: center;">
+                    <button id="saveBalanceBtn" class="btn btn-primary">שמור</button>
+                    <button id="cancelBalanceBtn" class="btn btn-secondary">בטל</button>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+        
+        document.getElementById('openingBalanceInput').focus();
+        document.getElementById('openingBalanceInput').select();
+        
+        document.getElementById('saveBalanceBtn').addEventListener('click', () => {
+            const newBalance = parseFloat(document.getElementById('openingBalanceInput').value) || 0;
+            const key = `${this.currentYear}-${month}`;
+            this.openingBalances.set(key, newBalance);
+            this.manualOpeningBalances.add(key); // Mark as manually set
+            this.saveData();
+            this.updateBalanceSummary(month);
+            document.body.removeChild(modal);
+            this.showNotification(`יתרת הפתיחה ל${monthName} ${this.currentYear} עודכנה`, 'success');
+        });
+        
+        document.getElementById('cancelBalanceBtn').addEventListener('click', () => {
+            document.body.removeChild(modal);
+        });
+        
+        // Close on outside click
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                document.body.removeChild(modal);
+            }
+        });
+        
+        // Save on Enter
+        document.getElementById('openingBalanceInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                document.getElementById('saveBalanceBtn').click();
+            }
+        });
+    }
+
+    // Show modal to edit monthly notes
+    showMonthlyNotesModal(month) {
+        const monthName = this.getMonthName(month);
+        const currentNotes = this.getMonthlyNotes(month) || '';
+        
+        const modal = document.createElement('div');
+        modal.className = 'settings-modal';
+        modal.style.display = 'flex';
+        modal.innerHTML = `
+            <div class="settings-content" style="width: 500px; max-width: 90vw;">
+                <h3 style="color: #1f4e79; margin-bottom: 15px;">הערות לחודש ${monthName}</h3>
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; margin-bottom: 8px; font-weight: 500;">הערות והוצאות מיוחדות:</label>
+                    <textarea id="monthlyNotesInput" rows="4" placeholder="לדוגמה: בונוס שנתי, חופשה, תיקונים בבית..."
+                              style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 1rem; resize: vertical; font-family: inherit;">${currentNotes}</textarea>
+                </div>
+                <div style="display: flex; gap: 10px; justify-content: center;">
+                    <button id="saveNotesBtn" class="btn btn-primary">שמור</button>
+                    <button id="cancelNotesBtn" class="btn btn-secondary">בטל</button>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+        
+        document.getElementById('monthlyNotesInput').focus();
+        
+        document.getElementById('saveNotesBtn').addEventListener('click', () => {
+            const newNotes = document.getElementById('monthlyNotesInput').value.trim();
+            this.setMonthlyNotes(month, newNotes);
+            this.saveData();
+            this.updateBalanceSummary(month);
+            document.body.removeChild(modal);
+            this.showNotification(`הערות ל${monthName} ${this.currentYear} עודכנו`, 'success');
+        });
+        
+        document.getElementById('cancelNotesBtn').addEventListener('click', () => {
+            document.body.removeChild(modal);
+        });
+        
+        // Close on outside click
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                document.body.removeChild(modal);
+            }
+        });
+    }
+
+    // Get monthly notes
+    getMonthlyNotes(month) {
+        if (!this.monthlyNotes) {
+            this.monthlyNotes = new Map();
+        }
+        return this.monthlyNotes.get(`${this.currentYear}-${month}`);
+    }
+
+    // Set monthly notes
+    setMonthlyNotes(month, notes) {
+        if (!this.monthlyNotes) {
+            this.monthlyNotes = new Map();
+        }
+        this.monthlyNotes.set(`${this.currentYear}-${month}`, notes);
+    }
+
+    // Calculate closing balance for a month
+    calculateClosingBalance(month, year = this.currentYear) {
+        const monthlyTransactions = this.transactions.filter(t => {
+            const transactionYear = t.year || year;
+            return t.month === month && transactionYear === year;
+        });
+        const income = monthlyTransactions
+            .filter(t => t.type === 'income')
+            .reduce((sum, t) => sum + t.amount, 0);
+        const expenses = monthlyTransactions
+            .filter(t => t.type === 'expense')
+            .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+        const transfers = monthlyTransactions
+            .filter(t => t.type === 'transfer')
+            .reduce((sum, t) => sum + t.amount, 0);
+        const openingBalance = this.openingBalances.get(`${year}-${month}`) || 0;
+        
+        return openingBalance + income - expenses + transfers;
+    }
+
+    updateCategorySummary(month) {
+        const container = document.getElementById('categorySummary');
+        // Filter transactions - handle both old data (without year) and new data (with year)
+        const monthlyTransactions = this.transactions.filter(t => {
+            const transactionYear = t.year || this.currentYear; // Use current year if no year specified
+            return t.month === month && transactionYear === this.currentYear;
+        });
+        
+        // Group by category
+        const categoryTotals = {};
+        monthlyTransactions.forEach(transaction => {
+            const category = transaction.category || 'לא מקוטלג';
+            categoryTotals[category] = (categoryTotals[category] || 0) + transaction.amount;
+        });
+
+        // Sort categories by amount (descending)
+        const sortedCategories = Object.entries(categoryTotals)
+            .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
+
+        container.innerHTML = '';
+        sortedCategories.forEach(([category, amount]) => {
+            const item = document.createElement('div');
+            item.className = 'category-item';
+            item.innerHTML = `
+                <span class="category-name">${category}</span>
+                <span class="category-amount ${amount >= 0 ? 'income' : 'expense'}">${this.formatCurrency(amount)}</span>
+            `;
+            container.appendChild(item);
+        });
+
+        if (sortedCategories.length === 0) {
+            container.innerHTML = '<p style="text-align: center; color: #666;">אין נתונים לחודש זה</p>';
+        }
+    }
+
+    // Update actual expenses summary (excluding checks and income)
+    updateActualExpensesSummary(month) {
+        const container = document.getElementById('actualExpensesSummary');
+        const monthName = this.getMonthName(month);
+
+        // Update the title with the month name
+        document.getElementById('actualExpensesTitle').textContent = `💰 הוצאות ${monthName}`;
+
+        // Filter transactions - handle both old data (without year) and new data (with year)
+        const monthlyTransactions = this.transactions.filter(t => {
+            const transactionYear = t.year || this.currentYear;
+            return t.month === month && transactionYear === this.currentYear;
+        });
+
+        // Filter using the new includeInMonthlyExpenses property
+        // Exclude check payments
+        const actualExpenses = monthlyTransactions.filter(t => {
+            // Exclude check payments
+            if (t.paymentMethod === 'check') {
+                return false;
+            }
+            // Include only if item is marked for monthly expenses
+            return this.shouldIncludeInMonthlyExpenses(t.item);
+        });
+
+        // Group by item name for display
+        const itemTotals = {};
+        actualExpenses.forEach(transaction => {
+            const item = transaction.item || 'לא מזוהה';
+            itemTotals[item] = (itemTotals[item] || 0) + Math.abs(transaction.amount);
+        });
+
+        // Sort items by amount (descending)
+        const sortedItems = Object.entries(itemTotals)
+            .sort((a, b) => b[1] - a[1]);
+
+        // Calculate total
+        const totalExpenses = actualExpenses.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+
+        container.innerHTML = '';
+
+        // Add table
+        const table = document.createElement('table');
+        table.className = 'expenses-table';
+        table.innerHTML = `
+            <thead>
+                <tr>
+                    <th>פריט</th>
+                    <th>סכום</th>
+                    <th>אחוז</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${sortedItems.map(([item, amount]) => {
+                    const percentage = totalExpenses > 0 ? ((amount / totalExpenses) * 100).toFixed(1) : 0;
+                    return `
+                        <tr>
+                            <td>${item}</td>
+                            <td class="amount-cell">₪${amount.toFixed(2)}</td>
+                            <td class="percentage-cell">${percentage}%</td>
+                        </tr>
+                    `;
+                }).join('')}
+            </tbody>
+            <tfoot>
+                <tr class="total-row">
+                    <td><strong>סה"כ הוצאות בפועל:</strong></td>
+                    <td class="amount-cell"><strong>₪${totalExpenses.toFixed(2)}</strong></td>
+                    <td class="percentage-cell"><strong>100%</strong></td>
+                </tr>
+            </tfoot>
+        `;
+
+        container.appendChild(table);
+
+        if (sortedItems.length === 0) {
+            container.innerHTML = '<p style="text-align: center; color: #666;">אין הוצאות בפועל לחודש זה</p>';
+        }
+    }
+
+    updateMonthlyTransactions(month) {
+        const container = document.getElementById('monthlyTransactions');
+        // Filter transactions - handle both old data (without year) and new data (with year)
+        const monthlyTransactions = this.transactions
+            .filter(t => {
+                const transactionYear = t.year || this.currentYear; // Use current year if no year specified
+                return t.month === month && transactionYear === this.currentYear;
+            })
+            .sort((a, b) => b.id - a.id); // Sort by id (newest first)
+
+        container.innerHTML = '';
+        monthlyTransactions.forEach(transaction => {
+            const item = document.createElement('div');
+            item.className = 'transaction-item';
+            item.innerHTML = `
+                <span class="transaction-item-name">${transaction.item}</span>
+                <span class="transaction-amount ${transaction.type}">${this.formatCurrency(transaction.amount)}</span>
+                <span class="type-badge ${transaction.type}">${this.getTypeLabel(transaction.type)}</span>
+            `;
+            container.appendChild(item);
+        });
+
+        if (monthlyTransactions.length === 0) {
+            container.innerHTML = '<p style="text-align: center; color: #666;">אין עסקאות לחודש זה</p>';
+        }
+    }
+
+    // Dashboard
+    updateDashboard() {
+        const selectedMonth = parseInt(document.getElementById('dashboardMonth').value);
+        this.updateMonthlyKPIs(selectedMonth);
+        this.updateAnnualKPIs();
+        this.updateCategoryBreakdown(selectedMonth);
+        this.updateMonthlyTrend();
+        this.updateAnnualSummaryTable();
+    }
+
+    updateMonthlyKPIs(month) {
+        // Filter transactions for the specific month and year - handle both old and new data
+        const monthlyTransactions = this.transactions.filter(t => {
+            const transactionYear = t.year || this.currentYear;
+            return t.month === month && transactionYear === this.currentYear;
+        });
+        
+        const expenses = monthlyTransactions
+            .filter(t => t.type === 'expense')
+            .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+        
+        const income = monthlyTransactions
+            .filter(t => t.type === 'income')
+            .reduce((sum, t) => sum + t.amount, 0);
+        
+        const net = income - expenses;
+
+        document.getElementById('monthlyExpenses').textContent = this.formatCurrency(expenses);
+        document.getElementById('monthlyIncome').textContent = this.formatCurrency(income);
+        document.getElementById('monthlyNet').textContent = this.formatCurrency(net);
+        document.getElementById('monthlyNet').className = `kpi-value ${net >= 0 ? 'income' : 'expense'}`;
+    }
+
+    updateAnnualKPIs() {
+        // Filter transactions for current year - handle both old and new data
+        const yearTransactions = this.transactions.filter(t => {
+            const transactionYear = t.year || this.currentYear;
+            return transactionYear === this.currentYear;
+        });
+        
+        const expenses = yearTransactions
+            .filter(t => t.type === 'expense')
+            .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+        
+        const income = yearTransactions
+            .filter(t => t.type === 'income')
+            .reduce((sum, t) => sum + t.amount, 0);
+        
+        const net = income - expenses;
+
+        document.getElementById('annualExpenses').textContent = this.formatCurrency(expenses);
+        document.getElementById('annualIncome').textContent = this.formatCurrency(income);
+        document.getElementById('annualNet').textContent = this.formatCurrency(net);
+        document.getElementById('annualNet').className = `kpi-value ${net >= 0 ? 'income' : 'expense'}`;
+    }
+
+    updateCategoryBreakdown(month) {
+        const container = document.getElementById('categoryBreakdown');
+        // Filter transactions for the specific month and year - handle both old and new data
+        const monthlyTransactions = this.transactions.filter(t => {
+            const transactionYear = t.year || this.currentYear;
+            return t.month === month && transactionYear === this.currentYear && t.type === 'expense';
+        });
+        
+        if (monthlyTransactions.length === 0) {
+            container.innerHTML = '<p style="text-align: center; color: #666;">אין נתוני הוצאות לחודש זה</p>';
+            return;
+        }
+
+        const totalExpenses = monthlyTransactions.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+        
+        // Group by category
+        const categoryTotals = {};
+        monthlyTransactions.forEach(transaction => {
+            const category = transaction.category || 'לא מקוטלג';
+            categoryTotals[category] = (categoryTotals[category] || 0) + Math.abs(transaction.amount);
+        });
+
+        // Sort and show top categories
+        const sortedCategories = Object.entries(categoryTotals)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 5); // Show top 5 categories
+
+        container.innerHTML = '';
+        sortedCategories.forEach(([category, amount]) => {
+            const percentage = (amount / totalExpenses) * 100;
+            const item = document.createElement('div');
+            item.className = 'breakdown-item';
+            item.innerHTML = `
+                <span>${category}</span>
+                <span class="breakdown-percentage">${percentage.toFixed(1)}%</span>
+            `;
+            container.appendChild(item);
+        });
+    }
+
+    updateMonthlyTrend() {
+        const container = document.getElementById('monthlyTrend');
+        
+        // Get transactions for current year only
+        const yearTransactions = this.transactions.filter(t => {
+            const transactionYear = t.year || this.currentYear;
+            return transactionYear === this.currentYear;
+        });
+        
+        if (yearTransactions.length === 0) {
+            container.innerHTML = '<p style="text-align: center; color: #666;">אין נתונים לשנה זו</p>';
             return;
         }
         
-        try {
-            // Add temporary message to show function is being called
-            container.innerHTML = '<p style="color: blue; padding: 20px; text-align: center;">טוען נתונים...</p>';
-            
-            // Filter by current year first
-            const currentYearTransactions = this.transactions.filter(t => {
-                const transactionYear = t.year || this.currentYear;
-                return transactionYear === this.currentYear;
-            });
-            
-            console.log(`Annual table: Processing ${currentYearTransactions.length} transactions for year ${this.currentYear}`);
-            
-            // If no transactions, show message and stop
-            if (currentYearTransactions.length === 0) {
-                container.innerHTML = `
-                    <div style="text-align: center; padding: 40px; background: #f5f5f5; border-radius: 8px; border: 2px dashed #ccc;">
-                        <h3 style="color: #666; margin: 0 0 10px 0;">📊 אין עסקאות לשנה ${this.currentYear}</h3>
-                        <p style="color: #999; margin: 0;">טען עסקאות או בחר שנה אחרת</p>
-                    </div>
-                `;
-                console.log('No transactions for year', this.currentYear, '- stopping table generation');
-                return;
-            }
-            
-            // Collect ONLY expense categories (exclude income)
-            const expCats = new Set();
-            currentYearTransactions.forEach(transaction => {
-                if (transaction.type === 'expense') {
-                    const category = transaction.category || 'שונות';
-                    expCats.add(category);
-                }
-            });
-            
-            // Convert to sorted array alphabetically
-            const categories = Array.from(expCats).sort((a, b) => a.localeCompare(b, 'he'));
-            
-            console.log('Expense categories found:', categories);
-            
-            // Process data for all 12 months
-            const monthlyData = {};
-            const categoryTotals = {};
-            let totalIncomeAnnual = 0;
-            
-            // Initialize data structures
-            for (let month = 1; month <= 12; month++) {
-                monthlyData[month] = {
-                    income: 0,
-                    expenses: {}
-                };
-                categories.forEach(cat => {
-                    monthlyData[month].expenses[cat] = 0;
-                });
-            }
-            
-            // Initialize category totals
-            categories.forEach(cat => {
-                categoryTotals[cat] = 0;
-            });
-            
-            // Populate data from transactions
-            currentYearTransactions.forEach((transaction, idx) => {
-                const month = parseInt(transaction.month);
-                
-                // Debug first few transactions
-                if (idx < 3) {
-                    console.log(`Transaction ${idx}:`, { 
-                        item: transaction.item, 
-                        month, 
-                        type: transaction.type, 
-                        amount: transaction.amount, 
-                        category: transaction.category 
-                    });
-                }
-                
-                // Skip if month is invalid
-                if (!month || isNaN(month) || month < 1 || month > 12) {
-                    console.warn('Invalid month for transaction:', transaction);
-                    return;
-                }
-                
-                if (transaction.type === 'income') {
-                    // Add to income
-                    monthlyData[month].income += transaction.amount;
-                    totalIncomeAnnual += transaction.amount;
-                } else if (transaction.type === 'expense') {
-                    // Add to expense category
-                    const category = transaction.category || 'שונות';
-                    const amount = Math.abs(transaction.amount);
-                    monthlyData[month].expenses[category] += amount;
-                    categoryTotals[category] += amount;
-                }
-            });
-            
-            console.log('Monthly data sample (month 1):', monthlyData[1]);
-            console.log('Category totals:', categoryTotals);
-            
-            // Calculate monthly expense totals and balances
-            const monthlyExpenseTotals = {};
-            const monthlyBalances = {};
-            for (let month = 1; month <= 12; month++) {
-                const expenseSum = categories.reduce((sum, cat) => 
-                    sum + (monthlyData[month].expenses[cat] || 0), 0);
-                monthlyExpenseTotals[month] = expenseSum;
-                monthlyBalances[month] = monthlyData[month].income - expenseSum;
-            }
-            
-            // Calculate totals
-            const totalExpensesAnnual = categories.reduce((sum, cat) => sum + categoryTotals[cat], 0);
-            const annualBalance = totalIncomeAnnual - totalExpensesAnnual;
-            
-            // Calculate percentages for each category
-            const categoryPercents = {};
-            categories.forEach(cat => {
-                categoryPercents[cat] = totalExpensesAnnual > 0 ? (categoryTotals[cat] / totalExpensesAnnual) * 100 : 0;
-            });
-            
-            // Build HTML table with new structure
-            let tableHTML = `
-                <table>
-                    <thead>
-                        <tr>
-                            <th style="width: 100px;">חודש</th>
-                            <th style="min-width: 90px; background: #4caf50; color: white;">הכנסות</th>
-                            ${categories.map(cat => `<th style="min-width: 80px;">${cat}</th>`).join('')}
-                            <th style="min-width: 110px; background: #f44336; color: white;">סך הוצאות</th>
-                            <th style="min-width: 90px; background: #1976d2; color: white;">מאזן</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-            `;
-            
-            // Add rows for each month
-            for (let month = 1; month <= 12; month++) {
-                const monthName = this.getMonthName(month);
-                const income = monthlyData[month].income;
-                const expenses = monthlyExpenseTotals[month];
-                const balance = monthlyBalances[month];
-                
-                tableHTML += `
-                    <tr>
-                        <td class="month-name">${monthName}</td>
-                        <td class="category-amount ${income === 0 ? 'zero' : 'income-cell'}">${
-                            income === 0 ? '-' : this.formatCurrency(income)
-                        }</td>
-                        ${categories.map(cat => {
-                            const amount = monthlyData[month].expenses[cat] || 0;
-                            return `<td class="category-amount ${amount === 0 ? 'zero' : 'expense-cell'}">${
-                                amount === 0 ? '-' : this.formatCurrency(amount)
-                            }</td>`;
-                        }).join('')}
-                        <td class="total-monthly negative">${
-                            expenses === 0 ? '-' : this.formatCurrency(expenses)
-                        }</td>
-                        <td class="total-monthly ${balance >= 0 ? 'positive' : 'negative'}">${
-                            balance === 0 ? '-' : this.formatCurrency(balance)
-                        }</td>
-                    </tr>
-                `;
-            }
-            
-            // Add totals row with percentages
-            tableHTML += `
-                    <tr class="total-row" style="background: #e3f2fd;">
-                        <td class="month-name" style="font-weight: 700;">סיכום</td>
-                        <td class="category-total income-cell" style="font-weight: 700;">
-                            ${this.formatCurrency(totalIncomeAnnual)}
-                        </td>
-                        ${categories.map(cat => {
-                            const amount = categoryTotals[cat] || 0;
-                            const percent = categoryPercents[cat];
-                            return `<td class="category-total expense-cell" style="font-weight: 700;">
-                                <div>${this.formatCurrency(amount)}</div>
-                                <div style="font-size: 0.75rem; color: #666;">(${percent.toFixed(1)}%)</div>
-                            </td>`;
-                        }).join('')}
-                        <td class="category-total" style="background: #f44336; color: white; font-weight: 700;">
-                            ${this.formatCurrency(totalExpensesAnnual)}
-                        </td>
-                        <td class="category-total ${annualBalance >= 0 ? 'positive' : 'negative'}" style="font-weight: 700;">
-                            ${this.formatCurrency(annualBalance)}
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
-            `;
-            
-            console.log('Setting container innerHTML...');
-            container.innerHTML = tableHTML;
-            console.log('✅ Container innerHTML set successfully! Table should now be visible.');
-            
-            // Find top expense category
-            const topExpenseData = categories
-                .map(cat => ({ category: cat, amount: categoryTotals[cat] || 0 }))
-                .sort((a, b) => b.amount - a.amount);
-            const topExpenseCategory = topExpenseData.length > 0 ? topExpenseData[0].category : 'אין נתונים';
-            
-            // Add summary statistics
-            const statsHTML = `
-                <div style="margin-top: 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
-                    <div style="background: #e8f5e8; padding: 15px; border-radius: 8px; text-align: center;">
-                        <div style="font-size: 0.9rem; color: #2e7d32; margin-bottom: 5px;">סה״כ הכנסות שנתי</div>
-                        <div style="font-size: 1.2rem; font-weight: 600; color: #1b5e20;">
-                            ${this.formatCurrency(totalIncomeAnnual)}
-                        </div>
-                    </div>
-                    <div style="background: #ffebee; padding: 15px; border-radius: 8px; text-align: center;">
-                        <div style="font-size: 0.9rem; color: #c62828; margin-bottom: 5px;">סה״כ הוצאות שנתי</div>
-                        <div style="font-size: 1.2rem; font-weight: 600; color: #b71c1c;">
-                            ${this.formatCurrency(totalExpensesAnnual)}
-                        </div>
-                    </div>
-                    <div style="background: ${annualBalance >= 0 ? '#e3f2fd' : '#fce4ec'}; padding: 15px; border-radius: 8px; text-align: center;">
-                        <div style="font-size: 0.9rem; color: ${annualBalance >= 0 ? '#1565c0' : '#c2185b'}; margin-bottom: 5px;">יתרה שנתית נטו</div>
-                        <div style="font-size: 1.2rem; font-weight: 600; color: ${annualBalance >= 0 ? '#0d47a1' : '#880e4f'};">
-                            ${this.formatCurrency(annualBalance)}
-                        </div>
-                    </div>
-                    <div style="background: #fff3e0; padding: 15px; border-radius: 8px; text-align: center;">
-                        <div style="font-size: 0.9rem; color: #e65100; margin-bottom: 5px;">ממוצע הוצאות חודשי</div>
-                        <div style="font-size: 1rem; font-weight: 600; color: #bf360c;">
-                            ${this.formatCurrency(totalExpensesAnnual / 12)}
-                        </div>
-                    </div>
-                    <div style="background: #f3e5f5; padding: 15px; border-radius: 8px; text-align: center;">
-                        <div style="font-size: 0.9rem; color: #7b1fa2; margin-bottom: 5px;">קטגוריית הוצאה מובילה</div>
-                        <div style="font-size: 0.9rem; font-weight: 600; color: #4a148c;">
-                            ${topExpenseCategory}
-                        </div>
-                    </div>
-                    <div style="background: #e8f5e8; padding: 15px; border-radius: 8px; text-align: center;">
-                        <div style="font-size: 0.9rem; color: #2e7d32; margin-bottom: 5px;">ממוצע הכנסות חודשי</div>
-                        <div style="font-size: 1rem; font-weight: 600; color: #1b5e20;">
-                            ${this.formatCurrency(totalIncomeAnnual / 12)}
-                        </div>
-                    </div>
-                </div>
-            `;
-            
-            console.log('Adding summary statistics...');
-            container.innerHTML += statsHTML;
-            console.log('✅ Annual summary table completed successfully! Check the dashboard.');
-            
-        } catch (error) {
-            console.error('Error in updateAnnualSummaryTable:', error);
-            container.innerHTML = `
-                <div style="background: #ffebee; padding: 20px; border-radius: 8px; border: 2px solid #f44336;">
-                    <h3 style="color: #d32f2f; margin: 0 0 10px 0;">❌ שגיאה בטעינת הטבלה</h3>
-                    <p style="color: #666; margin: 0;">${error.message}</p>
-                    <p style="color: #999; margin: 10px 0 0 0; font-size: 0.9em;">בדוק את הקונסול למידע נוסף</p>
-                </div>
-            `;
+        // Calculate monthly totals
+        const monthlyData = {};
+        for (let month = 1; month <= 12; month++) {
+            monthlyData[month] = {
+                income: 0,
+                expenses: 0,
+                net: 0
+            };
         }
+        
+        yearTransactions.forEach(t => {
+            if (t.type === 'income') {
+                monthlyData[t.month].income += t.amount;
+            } else if (t.type === 'expense') {
+                monthlyData[t.month].expenses += Math.abs(t.amount);
+            }
+        });
+        
+        // Calculate net for each month
+        Object.keys(monthlyData).forEach(month => {
+            monthlyData[month].net = monthlyData[month].income - monthlyData[month].expenses;
+        });
+        
+        // Find max value for scaling
+        const maxValue = Math.max(
+            ...Object.values(monthlyData).map(d => Math.max(d.income, d.expenses)),
+            1000 // Minimum scale
+        );
+        
+        // SVG dimensions
+        const width = 900;
+        const height = 250;
+        const padding = { top: 20, right: 20, bottom: 40, left: 60 };
+        const chartWidth = width - padding.left - padding.right;
+        const chartHeight = height - padding.top - padding.bottom;
+        
+        // Clear container
+        container.innerHTML = '';
+        container.style.cssText = 'display: flex; flex-direction: column; align-items: center; padding: 10px;';
+        
+        // Create SVG
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('width', width);
+        svg.setAttribute('height', height);
+        svg.style.cssText = 'background: white; border-radius: 8px;';
+        
+        // Month names
+        const monthNames = ['ינו', 'פבר', 'מרץ', 'אפר', 'מאי', 'יונ', 'יול', 'אוג', 'ספט', 'אוק', 'נוב', 'דצמ'];
+        
+        // Draw grid lines (horizontal)
+        const gridLinesCount = 5;
+        for (let i = 0; i <= gridLinesCount; i++) {
+            const y = padding.top + (chartHeight / gridLinesCount) * i;
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('x1', padding.left);
+            line.setAttribute('y1', y);
+            line.setAttribute('x2', width - padding.right);
+            line.setAttribute('y2', y);
+            line.setAttribute('stroke', '#e0e0e0');
+            line.setAttribute('stroke-width', '1');
+            svg.appendChild(line);
+            
+            // Y-axis labels
+            const value = maxValue - (maxValue / gridLinesCount) * i;
+            const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            text.setAttribute('x', padding.left - 10);
+            text.setAttribute('y', y + 5);
+            text.setAttribute('text-anchor', 'end');
+            text.setAttribute('font-size', '11');
+            text.setAttribute('fill', '#666');
+            text.textContent = (value / 1000).toFixed(0) + 'K';
+            svg.appendChild(text);
+        }
+        
+        // Build income and expense line points
+        const incomePoints = [];
+        const expensePoints = [];
+        const netPoints = [];
+        
+        for (let month = 1; month <= 12; month++) {
+            const data = monthlyData[month];
+            const x = padding.left + ((month - 1) / 11) * chartWidth;
+            
+            const incomeY = padding.top + chartHeight - (data.income / maxValue) * chartHeight;
+            const expenseY = padding.top + chartHeight - (data.expenses / maxValue) * chartHeight;
+            const netY = padding.top + chartHeight - ((data.net + maxValue) / (maxValue * 2)) * chartHeight;
+            
+            incomePoints.push(`${x},${incomeY}`);
+            expensePoints.push(`${x},${expenseY}`);
+            netPoints.push(`${x},${netY}`);
+            
+            // Draw X-axis labels
+            const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            text.setAttribute('x', x);
+            text.setAttribute('y', height - padding.bottom + 20);
+            text.setAttribute('text-anchor', 'middle');
+            text.setAttribute('font-size', '11');
+            text.setAttribute('fill', '#666');
+            text.textContent = monthNames[month - 1];
+            svg.appendChild(text);
+            
+            // Draw data points (circles)
+            // Income point
+            const incomeCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            incomeCircle.setAttribute('cx', x);
+            incomeCircle.setAttribute('cy', incomeY);
+            incomeCircle.setAttribute('r', '4');
+            incomeCircle.setAttribute('fill', '#4caf50');
+            incomeCircle.setAttribute('stroke', 'white');
+            incomeCircle.setAttribute('stroke-width', '2');
+            const incomeTitle = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+            incomeTitle.textContent = `${monthNames[month - 1]} - הכנסה: ${this.formatCurrency(data.income)}`;
+            incomeCircle.appendChild(incomeTitle);
+            svg.appendChild(incomeCircle);
+            
+            // Expense point
+            const expenseCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            expenseCircle.setAttribute('cx', x);
+            expenseCircle.setAttribute('cy', expenseY);
+            expenseCircle.setAttribute('r', '4');
+            expenseCircle.setAttribute('fill', '#f44336');
+            expenseCircle.setAttribute('stroke', 'white');
+            expenseCircle.setAttribute('stroke-width', '2');
+            const expenseTitle = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+            expenseTitle.textContent = `${monthNames[month - 1]} - הוצאות: ${this.formatCurrency(data.expenses)}`;
+            expenseCircle.appendChild(expenseTitle);
+            svg.appendChild(expenseCircle);
+        }
+        
+        // Draw income line
+        const incomeLine = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+        incomeLine.setAttribute('points', incomePoints.join(' '));
+        incomeLine.setAttribute('fill', 'none');
+        incomeLine.setAttribute('stroke', '#4caf50');
+        incomeLine.setAttribute('stroke-width', '2');
+        svg.insertBefore(incomeLine, svg.firstChild.nextSibling);
+        
+        // Draw expense line
+        const expenseLine = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+        expenseLine.setAttribute('points', expensePoints.join(' '));
+        expenseLine.setAttribute('fill', 'none');
+        expenseLine.setAttribute('stroke', '#f44336');
+        expenseLine.setAttribute('stroke-width', '2');
+        svg.insertBefore(expenseLine, svg.firstChild.nextSibling);
+        
+        container.appendChild(svg);
+        
+        // Add legend
+        const legend = document.createElement('div');
+        legend.style.cssText = 'display: flex; gap: 30px; justify-content: center; margin-top: 15px; font-size: 0.9rem;';
+        legend.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <div style="width: 30px; height: 3px; background-color: #4caf50;"></div>
+                <span>הכנסה</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <div style="width: 30px; height: 3px; background-color: #f44336;"></div>
+                <span>הוצאה</span>
+            </div>
+        `;
+        container.appendChild(legend);
     }
 
     // Utility functions
@@ -2560,6 +2977,2160 @@ class BudgetSystem {
         document.body.removeChild(link);
         
         this.showNotification('קובץ המיפויים יוצא בהצלחה!', 'success');
+    }
+
+    // Check if a transaction is a duplicate
+    isDuplicateTransaction(newTransaction) {
+        return this.transactions.some(existing => {
+            return existing.item === newTransaction.item &&
+                   existing.month === newTransaction.month &&
+                   existing.year === newTransaction.year &&
+                   existing.type === newTransaction.type &&
+                   Math.abs(existing.amount - newTransaction.amount) < 0.01; // Allow for floating point precision
+        });
+    }
+
+    // Check if a check item is a duplicate
+    isDuplicateCheckItem(newCheckItem) {
+        return this.importedCheckItems.some(existing => {
+            return existing.item === newCheckItem.item &&
+                   existing.month === newCheckItem.month &&
+                   existing.year === newCheckItem.year &&
+                   Math.abs(existing.amount - newCheckItem.amount) < 0.01; // Allow for floating point precision
+        });
+    }
+
+    // Import CSV or XLSX file
+    importCSV(file) {
+        if (!file) return;
+
+        const fileExtension = file.name.split('.').pop().toLowerCase();
+
+        if (fileExtension === 'xlsx' || fileExtension === 'xls') {
+            // Check if XLSX library is available before processing
+            if (typeof XLSX === 'undefined') {
+                // Try to load XLSX library using global function
+                if (typeof window.loadXLSXLibrary === 'function') {
+                    console.log('⏳ טוען ספריית XLSX...');
+                    window.loadXLSXLibrary().then(() => {
+                        console.log('✅ XLSX נטען, מתחיל עיבוד קובץ');
+                        this.processExcelFile(file);
+                    }).catch(() => {
+                        alert('שגיאה: לא ניתן לטעון את ספריית XLSX.\n\nפתרונות:\n1. רענן את הדף ונסה שוב\n2. בדוק חיבור אינטרנט\n3. השתמש בקובץ CSV במקום XLSX');
+                    });
+                } else {
+                    alert('שגיאה: פונקציית טעינת XLSX לא זמינה.\nרענן את הדף ונסה שוב.');
+                }
+                return;
+            }
+            
+            // XLSX library is already loaded
+            this.processExcelFile(file);
+        } else {
+            // Process CSV file (original flow)
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const csvContent = e.target.result;
+                    const result = this.parseAndValidateCSV(csvContent);
+                
+                if (!result.success) {
+                    alert('שגיאה בטעינת הקובץ:\n' + result.error);
+                    return;
+                }
+
+                // Add transactions
+                let addedCount = 0;
+                let skippedCount = 0;
+                let checkItemsCount = 0;
+                const importedMonth = result.transactions.length > 0 ? result.transactions[0].month : null;
+                
+                result.transactions.forEach(trans => {
+                    // Check for duplicates before adding
+                    if (this.isDuplicateTransaction(trans)) {
+                        skippedCount++;
+                        console.log(`Skipping duplicate transaction: ${trans.item} - ${trans.amount}`);
+                    } else {
+                        this.transactions.push(trans);
+                        addedCount++;
+                    }
+                });
+
+                // Add check items separately with duplicate checking
+                if (result.checkItems && result.checkItems.length > 0) {
+                    let skippedCheckItems = 0;
+                    result.checkItems.forEach(checkItem => {
+                        // Check for duplicates before adding
+                        if (this.isDuplicateCheckItem(checkItem)) {
+                            skippedCheckItems++;
+                            console.log(`Skipping duplicate check item: ${checkItem.item} - ${checkItem.amount}`);
+                        } else {
+                            this.importedCheckItems.push(checkItem);
+                            checkItemsCount++;
+                        }
+                    });
+                    
+                    if (skippedCheckItems > 0) {
+                        console.log(`⚠️ ${skippedCheckItems} פריטי שיק כפולים דולגו`);
+                    }
+                }
+
+                this.saveData();
+                
+                // Show detailed notification
+                let message = `✅ ${addedCount} עסקאות נוספו בהצלחה`;
+                if (checkItemsCount > 0) {
+                    message += `\n🏦 ${checkItemsCount} פריטי שיק נוספו`;
+                }
+                if (skippedCount > 0) {
+                    message += `\n⚠️ ${skippedCount} עסקאות כפולות דולגו`;
+                }
+                // Add info about skipped check items
+                if (result.checkItems && result.checkItems.length > 0) {
+                    const totalCheckItemsAttempted = result.checkItems.length;
+                    const skippedCheckItems = totalCheckItemsAttempted - checkItemsCount;
+                    if (skippedCheckItems > 0) {
+                        message += `\n⚠️ ${skippedCheckItems} פריטי שיק כפולים דולגו`;
+                    }
+                }
+                this.showNotification(message, addedCount > 0 ? 'success' : 'info');
+                
+                // Update displays (wrapped separately to avoid blocking success message)
+                try {
+                    this.updateDisplay();
+                    
+                    // Update dashboard month selector to match imported month
+                    if (importedMonth) {
+                        const dashboardMonthSelect = document.getElementById('dashboardMonth');
+                        if (dashboardMonthSelect) {
+                            dashboardMonthSelect.value = importedMonth.toString().padStart(2, '0');
+                        }
+                    }
+                    
+                    // Force update dashboard even if not currently active tab
+                    this.updateDashboard();
+                } catch (displayError) {
+                    console.error('Error updating displays:', displayError);
+                    // Don't show error to user since data was imported successfully
+                }
+            } catch (error) {
+                console.error('Error importing CSV:', error);
+                    alert('שגיאה בקריאת הקובץ:\n' + error.message + '\n\nאנא ודא שהקובץ הוא CSV תקין.');
+                }
+            };
+            reader.readAsText(file, 'UTF-8');
+        }
+    }
+
+    // Process Excel file and convert to CSV format
+    processExcelFile(file) {
+        // Check if XLSX library is available
+        if (typeof XLSX === 'undefined') {
+            // Try to load XLSX library dynamically
+            this.loadXLSXLibrary().then(() => {
+                this.processExcelFile(file); // Retry after loading
+            }).catch(() => {
+                alert('שגיאה: ספריית XLSX לא נטענה.\n\nפתרונות אפשריים:\n1. רענן את הדף ונסה שוב\n2. בדוק חיבור לאינטרנט\n3. נסה דפדפן אחר\n4. השתמש בקובץ CSV במקום XLSX');
+            });
+            return;
+        }
+
+        console.log('✅ XLSX library loaded successfully, processing file:', file.name);
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                
+                // Get first sheet
+                const firstSheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[firstSheetName];
+                
+                // Convert to array of arrays
+                const rawData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+                
+                console.log('📊 Excel file data:', {
+                    totalRows: rawData.length,
+                    firstRows: rawData.slice(0, 5)
+                });
+
+                // Find header row (contains 'תאריך' and 'הפעולה')
+                let headerRowIndex = -1;
+                for (let i = 0; i < rawData.length; i++) {
+                    const row = rawData[i];
+                    const rowStr = row.join('|');
+                    console.log(`Row ${i}:`, rowStr);
+                    if (rowStr.includes('תאריך') && rowStr.includes('הפעולה')) {
+                        headerRowIndex = i;
+                        console.log(`✅ Found header row at index ${i}`);
+                        break;
+                    }
+                }
+                
+                if (headerRowIndex === -1) {
+                    console.error('❌ Header row not found. First 10 rows:', rawData.slice(0, 10));
+                    alert('שגיאה: לא נמצאה שורת כותרות בקובץ.\nצפוי מבנה עם עמודות: תאריך, הפעולה\n\nבדוק את ה-Console לפרטים נוספים (F12)');
+                    return;
+                }
+                
+                const headers = rawData[headerRowIndex];
+                const dataRows = rawData.slice(headerRowIndex + 1);
+                
+                console.log('📋 Headers found:', headers);
+
+                // Map column indices
+                const colMap = {};
+                headers.forEach((header, idx) => {
+                    const h = String(header).trim();
+                    colMap[h] = idx;
+                });
+                
+                console.log('🗺️ Column map:', colMap);
+
+                // Columns to keep
+                const dateCol = colMap['תאריך'];
+                const actionCol = colMap['הפעולה'];
+                const debitCol = colMap['חובה'] !== undefined ? colMap['חובה'] : colMap['חיוב'];
+                const creditCol = colMap['זכות'];
+                
+                console.log('📊 Column indices:', { dateCol, actionCol, debitCol, creditCol });
+
+                if (dateCol === undefined || actionCol === undefined) {
+                    console.error('❌ Required columns not found. Available columns:', Object.keys(colMap));
+                    alert('שגיאה: חסרות עמודות חובה בקובץ (תאריך, הפעולה)\n\nעמודות זמינות: ' + Object.keys(colMap).join(', ') + '\n\nבדוק את ה-Console לפרטים נוספים (F12)');
+                    return;
+                }
+                
+                // Process rows
+                const monthMap = {
+                    '01': 'ינואר', '02': 'פברואר', '03': 'מרץ', '04': 'אפריל',
+                    '05': 'מאי', '06': 'יוני', '07': 'יולי', '08': 'אוגוסט',
+                    '09': 'ספטמבר', '10': 'אוקטובר', '11': 'נובמבר', '12': 'דצמבר'
+                };
+                
+                const processedRows = [];
+                const monthCounts = {};
+                
+                console.log(`🔄 Processing ${dataRows.length} data rows...`);
+
+                dataRows.forEach((row, index) => {
+                    if (!row || row.length === 0) return;
+                    
+                    let dateValue = row[dateCol];
+                    const action = String(row[actionCol] || '').trim();
+                    const debit = row[debitCol];
+                    const credit = row[creditCol];
+                    
+                    if (!action) return; // Skip empty rows
+                    
+                    // Clean action from quotes and Hebrew geresh/gershayim
+                    const cleanAction = action.replace(/["\u0022\u05F4\u05F3]/g, '');
+                    
+                    // Parse date
+                    let dateStr = '';
+                    if (typeof dateValue === 'number') {
+                        // Excel date number
+                        const excelDate = XLSX.SSF.parse_date_code(dateValue);
+                        dateStr = `${excelDate.y}-${String(excelDate.m).padStart(2, '0')}-${String(excelDate.d).padStart(2, '0')}`;
+                        if (index < 3) console.log(`Date conversion (row ${index}): ${dateValue} -> ${dateStr}`);
+                    } else if (typeof dateValue === 'string') {
+                        dateStr = dateValue.replace(' 00:00:00', '').trim();
+                        if (index < 3) console.log(`Date string (row ${index}): ${dateValue} -> ${dateStr}`);
+                    } else {
+                        if (index < 3) console.log(`Unknown date type (row ${index}):`, typeof dateValue, dateValue);
+                    }
+                    
+                    if (!dateStr || dateStr.length < 10) {
+                        if (index < 3) console.warn(`Invalid date format (row ${index}): "${dateStr}"`);
+                        return;
+                    }
+
+                    // Extract year and month
+                    const year = dateStr.substring(0, 4);
+                    const monthNum = dateStr.substring(5, 7);
+                    const monthName = monthMap[monthNum];
+                    
+                    if (!monthName) return;
+                    
+                    // Count months
+                    monthCounts[monthName] = (monthCounts[monthName] || 0) + 1;
+                    
+                    processedRows.push({
+                        year,
+                        month: monthName,
+                        item: cleanAction,
+                        debit: debit || '',
+                        credit: credit || ''
+                    });
+                });
+                
+                console.log(`✅ Processed ${processedRows.length} rows`);
+                console.log('📊 Month counts:', monthCounts);
+
+                // Find most frequent month
+                let mostFrequentMonth = null;
+                let maxCount = 0;
+                for (const [month, count] of Object.entries(monthCounts)) {
+                    if (count > maxCount) {
+                        maxCount = count;
+                        mostFrequentMonth = month;
+                    }
+                }
+                
+                console.log(`📅 Most frequent month: ${mostFrequentMonth} (${maxCount} items)`);
+
+                // Keep only rows from most frequent month
+                const filteredRows = processedRows.filter(row => row.month === mostFrequentMonth);
+                
+                console.log(`✅ Filtered to ${filteredRows.length} rows for ${mostFrequentMonth}`);
+
+                if (filteredRows.length === 0) {
+                    console.error('❌ No valid data found after filtering');
+                    alert('שגיאה: לא נמצאו נתונים תקינים בקובץ\n\nבדוק את ה-Console לפרטים נוספים (F12)');
+                    return;
+                }
+                
+                // Get year for filename
+                const yearForFile = filteredRows[0].year;
+                
+                // Create CSV content
+                let csvContent = 'שנה,חודש,פריט,חובה,זכות\n';
+                filteredRows.forEach(row => {
+                    csvContent += `${row.year},${row.month},${row.item},${row.debit},${row.credit}\n`;
+                });
+                
+                // Create a virtual CSV file name
+                const monthNumMap = {
+                    'ינואר': '01', 'פברואר': '02', 'מרץ': '03', 'אפריל': '04',
+                    'מאי': '05', 'יוני': '06', 'יולי': '07', 'אוגוסט': '08',
+                    'ספטמבר': '09', 'אוקטובר': '10', 'נובמבר': '11', 'דצמבר': '12'
+                };
+                const monthForFile = monthNumMap[mostFrequentMonth];
+                const numItems = filteredRows.length;
+                const csvFileName = `${monthForFile}_${yearForFile}_${numItems}-items_csv.csv`;
+                
+                // Save CSV file to Downloads folder
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement('a');
+                const url = URL.createObjectURL(blob);
+                link.setAttribute('href', url);
+                link.setAttribute('download', csvFileName);
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+                
+                // Show file saved notification with location
+                this.showNotification(
+                    `💾 קובץ CSV נשמר בהצלחה!\n\n` +
+                    `📁 מיקום: תיקיית Downloads\n` +
+                    `📄 קובץ: ${csvFileName}\n` +
+                    `📊 ${mostFrequentMonth} ${yearForFile}\n` +
+                    `✅ ${filteredRows.length} עסקאות`,
+                    'success'
+                );
+                
+                // Now parse the CSV content using existing logic
+                const result = this.parseAndValidateCSV(csvContent);
+                
+                if (!result.success) {
+                    alert('שגיאה בעיבוד הקובץ:\n' + result.error);
+                    return;
+                }
+                
+                // Add transactions
+                let addedCount = 0;
+                let skippedCount = 0;
+                let checkItemsCount = 0;
+                const importedMonth = result.transactions.length > 0 ? result.transactions[0].month : null;
+                
+                result.transactions.forEach(trans => {
+                    if (this.isDuplicateTransaction(trans)) {
+                        skippedCount++;
+                    } else {
+                        this.transactions.push(trans);
+                        addedCount++;
+                    }
+                });
+                
+                // Add check items separately with duplicate checking
+                if (result.checkItems && result.checkItems.length > 0) {
+                    let skippedCheckItems = 0;
+                    result.checkItems.forEach(checkItem => {
+                        // Check for duplicates before adding
+                        if (this.isDuplicateCheckItem(checkItem)) {
+                            skippedCheckItems++;
+                            console.log(`Skipping duplicate check item: ${checkItem.item} - ${checkItem.amount}`);
+                        } else {
+                            this.importedCheckItems.push(checkItem);
+                            checkItemsCount++;
+                        }
+                    });
+                    
+                    if (skippedCheckItems > 0) {
+                        console.log(`⚠️ ${skippedCheckItems} פריטי שיק כפולים דולגו`);
+                    }
+                }
+
+                this.saveData();
+                
+                let message = `✅ ${addedCount} עסקאות נוספו מקובץ Excel`;
+                if (checkItemsCount > 0) {
+                    message += `\n🏦 ${checkItemsCount} פריטי שיק נוספו`;
+                }
+                if (skippedCount > 0) {
+                    message += `\n⚠️ ${skippedCount} עסקאות כפולות דולגו`;
+                }
+                // Add info about skipped check items
+                if (result.checkItems && result.checkItems.length > 0) {
+                    const totalCheckItemsAttempted = result.checkItems.length;
+                    const skippedCheckItems = totalCheckItemsAttempted - checkItemsCount;
+                    if (skippedCheckItems > 0) {
+                        message += `\n⚠️ ${skippedCheckItems} פריטי שיק כפולים דולגו`;
+                    }
+                }
+                this.showNotification(message, addedCount > 0 ? 'success' : 'info');
+                
+                // Update displays
+                try {
+                    this.updateDisplay();
+                    if (importedMonth) {
+                        const dashboardMonthSelect = document.getElementById('dashboardMonth');
+                        if (dashboardMonthSelect) {
+                            dashboardMonthSelect.value = importedMonth.toString().padStart(2, '0');
+                        }
+                    }
+                    this.updateDashboard();
+                } catch (displayError) {
+                    console.error('Error updating displays:', displayError);
+                }
+                
+            } catch (error) {
+                console.error('Error processing Excel file:', error);
+                alert('שגיאה בקריאת קובץ Excel:\n' + error.message);
+            }
+        };
+
+        reader.onerror = (error) => {
+            console.error('FileReader error:', error);
+            alert('שגיאה בקריאת הקובץ.\nאנא ודא שהקובץ תקין ונסה שוב.');
+        };
+
+        reader.readAsArrayBuffer(file);
+    }
+
+    // Parse and validate CSV content
+    parseAndValidateCSV(csvContent) {
+        // Get currently selected month and year
+        const selectedMonthElement = document.getElementById('dataEntryMonthSelect');
+        const selectedMonth = selectedMonthElement.value;
+        
+        if (selectedMonth === 'all') {
+            return {
+                success: false,
+                error: 'יש לבחור חודש מסוים לפני ייבוא קובץ CSV.\nאנא בחר חודש מהתפריט הנפתח ונסה שוב.'
+            };
+        }
+
+        // Parse CSV
+        const lines = csvContent.split('\n').filter(line => line.trim());
+        if (lines.length < 2) {
+            return {
+                success: false,
+                error: 'הקובץ ריק או לא מכיל נתונים.'
+            };
+        }
+
+        // Parse header
+        const header = lines[0].split(',').map(h => h.trim());
+        const expectedHeaders = ['שנה', 'חודש', 'פריט', 'חובה', 'זכות'];
+        
+        // Validate header
+        const hasCorrectHeaders = expectedHeaders.every((h, i) => 
+            header[i] && header[i].replace(/"/g, '') === h
+        );
+        
+        if (!hasCorrectHeaders) {
+            return {
+                success: false,
+                error: 'כותרות הקובץ אינן תקינות.\nצפוי: שנה,חודש,פריט,חובה,זכות'
+            };
+        }
+
+        // Map Hebrew month names to numbers
+        const monthMap = {
+            'ינואר': '01', 'פברואר': '02', 'מרץ': '03', 'אפריל': '04',
+            'מאי': '05', 'יוני': '06', 'יולי': '07', 'אוגוסט': '08',
+            'ספטמבר': '09', 'אוקטובר': '10', 'נובמבר': '11', 'דצמבר': '12'
+        };
+
+        const transactions = [];
+        const checkItems = []; // Separate array for (שיק) items
+        const months = new Set();
+        const years = new Set();
+
+        // Parse data rows
+        for (let i = 1; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if (!line) continue;
+
+            // Parse CSV line (handle quotes)
+            const values = this.parseCSVLine(line);
+            
+            if (values.length < 5) continue;
+
+            const year = values[0].trim();
+            const monthName = values[1].trim();
+            // Remove " character and Hebrew geresh/gershayim from item name
+            const item = values[2].trim().replace(/["\u0022\u05F4\u05F3]/g, '');
+            const debit = values[3].trim(); // חובה (הוצאה)
+            const credit = values[4].trim(); // זכות (הכנסה)
+
+            // Check if this is a (שיק) item - item name is exactly "(שיק)"
+            const isCheckItem = item === '(שיק)';
+
+            // Convert month name to number
+            const month = monthMap[monthName];
+            if (!month) {
+                return {
+                    success: false,
+                    error: `שם חודש לא תקין בשורה ${i + 1}: "${monthName}"\nצפוי: ינואר, פברואר, וכו'.`
+                };
+            }
+
+            months.add(month);
+            years.add(year);
+
+            // Determine type and amount
+            let amount, type;
+            if (credit && credit !== '') {
+                // זכות = הכנסה
+                amount = parseFloat(credit);
+                type = 'income';
+            } else if (debit && debit !== '') {
+                // חובה = הוצאה
+                amount = -Math.abs(parseFloat(debit));
+                type = 'expense';
+            } else {
+                continue; // Skip if both empty
+            }
+
+            if (isNaN(amount)) {
+                return {
+                    success: false,
+                    error: `סכום לא תקין בשורה ${i + 1}: "${debit || credit}"`
+                };
+            }
+
+            // If this is a (שיק) item, add to checkItems array instead
+            if (isCheckItem) {
+                // Convert month number to Hebrew name for default item name
+                const monthNumberStr = month.padStart(2, '0');
+                const hebrewMonthNames = {
+                    '01': 'ינואר', '02': 'פברואר', '03': 'מרץ', '04': 'אפריל',
+                    '05': 'מאי', '06': 'יוני', '07': 'יולי', '08': 'אוגוסט',
+                    '09': 'ספטמבר', '10': 'אוקטובר', '11': 'נובמבר', '12': 'דצמבר'
+                };
+                const monthNameForItem = hebrewMonthNames[monthNumberStr] || monthName;
+
+                checkItems.push({
+                    id: Date.now() + Math.random(),
+                    item: `הוצאות חודש ${monthNameForItem}`,
+                    amount: amount,
+                    month: parseInt(month),
+                    year: parseInt(year),
+                    note: '',
+                    checkNumber: '',
+                    payeeName: '',
+                    color: 'yellow'
+                });
+
+                // Small delay to ensure unique IDs
+                const now = Date.now();
+                while (Date.now() === now) { /* wait */ }
+                continue; // Skip adding to regular transactions
+            }
+
+            // Determine category
+            let category;
+            let isCheckPayment = item.toLowerCase().includes('שיק');
+            if (isCheckPayment) {
+                category = 'שונות';
+            } else {
+                // Use getCategoryForItem to handle special cases and normalization
+                category = this.getCategoryForItem(item);
+            }
+
+            // Check if the item name is exactly "שיק" (without parentheses)
+            let noteToAdd = '';
+            if (item === 'שיק') {
+                noteToAdd = 'צ\'יק';
+                console.log(`Adding note "צ'יק" to item: ${item}`);
+            }
+
+            transactions.push({
+                id: Date.now() + Math.random(),
+                item: item,
+                amount: amount,
+                type: type,
+                category: category,
+                month: parseInt(month),
+                year: parseInt(year),
+                note: noteToAdd,
+                paymentMethod: isCheckPayment ? 'check' : 'cash',
+                checkDetails: isCheckPayment ? { checkNumber: '', payeeName: '' } : null,
+                color: 'yellow' // Auto-color CSV imports as yellow
+            });
+
+            // Small delay to ensure unique IDs
+            const now = Date.now();
+            while (Date.now() === now) { /* wait */ }
+        }
+
+        // Validation: Check if all months match selected month
+        if (months.size > 1) {
+            return {
+                success: false,
+                error: `הקובץ מכיל עסקאות ממספר חודשים: ${Array.from(months).map(m => this.getMonthName(parseInt(m))).join(', ')}\nכל העסקאות בקובץ חייבות להיות מאותו חודש.`
+            };
+        }
+
+        const csvMonth = Array.from(months)[0];
+        if (csvMonth !== selectedMonth) {
+            return {
+                success: false,
+                error: `אי-התאמה בין החודש הנבחר לחודש בקובץ!\n\nחודש נבחר באתר: ${this.getMonthName(parseInt(selectedMonth))}\nחודש בקובץ CSV: ${this.getMonthName(parseInt(csvMonth))}\n\nאנא בחר את החודש "${this.getMonthName(parseInt(csvMonth))}" ונסה שוב.`
+            };
+        }
+
+        // Validation: Check if year matches
+        if (years.size > 1) {
+            return {
+                success: false,
+                error: `הקובץ מכיל עסקאות ממספר שנים: ${Array.from(years).join(', ')}\nכל העסקאות בקובץ חייבות להיות מאותה שנה.`
+            };
+        }
+
+        const csvYear = Array.from(years)[0];
+        if (parseInt(csvYear) !== this.currentYear) {
+            return {
+                success: false,
+                error: `אי-התאמה בין השנה הנבחרת לשנה בקובץ!\n\nשנה נבחרת באתר: ${this.currentYear}\nשנה בקובץ CSV: ${csvYear}\n\nאנא בחר את השנה ${csvYear} ונסה שוב, או ערוך את הקובץ.`
+            };
+        }
+
+        return {
+            success: true,
+            transactions: transactions,
+            checkItems: checkItems
+        };
+    }
+
+    // Parse CSV line handling quotes
+    parseCSVLine(line) {
+        const values = [];
+        let current = '';
+        let inQuotes = false;
+
+        for (let i = 0; i < line.length; i++) {
+            const char = line[i];
+            
+            if (char === '"') {
+                if (inQuotes && line[i + 1] === '"') {
+                    // Double quote - add single quote
+                    current += '"';
+                    i++;
+                } else {
+                    // Toggle quote mode
+                    inQuotes = !inQuotes;
+                }
+            } else if (char === ',' && !inQuotes) {
+                // End of field
+                values.push(current);
+                current = '';
+            } else {
+                current += char;
+            }
+        }
+        
+        // Add last field
+        values.push(current);
+        
+        return values;
+    }
+
+    importData(file) {
+        if (!file) return;
+        
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const data = JSON.parse(e.target.result);
+                
+                if (confirm('האם אתה בטוח? פעולה זו תחליף את כל הנתונים הקיימים.')) {
+                    this.transactions = data.transactions || [];
+                    if (data.mappings) {
+                        this.mappings = new Map(data.mappings);
+                    }
+                    if (data.incomeItems) {
+                        this.incomeItems = new Set(data.incomeItems);
+                    }
+                    if (data.categories) {
+                        this.categories = data.categories;
+                    }
+                    if (data.openingBalances) {
+                        this.openingBalances = new Map(data.openingBalances);
+                    }
+                    if (data.manualOpeningBalances) {
+                        this.manualOpeningBalances = new Set(data.manualOpeningBalances);
+                    }
+                    if (data.monthlyNotes) {
+                        this.monthlyNotes = new Map(data.monthlyNotes);
+                    }
+                    if (data.lastSelectedMonth) {
+                        this.lastSelectedMonth = data.lastSelectedMonth;
+                    }
+                    if (data.lastSelectedYear) {
+                        this.lastSelectedYear = data.lastSelectedYear;
+                        this.currentYear = this.lastSelectedYear;
+                        document.getElementById('yearSelect').value = this.currentYear;
+                    }
+
+                    this.saveData();
+                    this.updateDisplay();
+                    this.showNotification('הנתונים יובאו בהצלחה!', 'success');
+                }
+            } catch (error) {
+                console.error('Error importing data:', error);
+                alert('שגיאה בייבוא הנתונים. אנא בדוק את הקובץ ונסה שוב.');
+            }
+        };
+        reader.readAsText(file);
+    }
+
+    // Export monthly report
+    exportMonthlyReport(month) {
+        const monthName = this.getMonthName(month);
+        const monthlyTransactions = this.transactions.filter(t => {
+            const transactionYear = t.year || this.currentYear;
+            return t.month === month && transactionYear === this.currentYear;
+        });
+        
+        // Get user data for report
+        const userData = this.getUserData();
+        const reportProducer = userData ? `${userData.name}${userData.phone ? ` | 📞 ${userData.phone}` : ''}${userData.id ? ` | ת"ז ${userData.id}` : ''}` : 'לא צוין';
+        
+        // Calculate totals
+        const income = monthlyTransactions
+            .filter(t => t.type === 'income')
+            .reduce((sum, t) => sum + t.amount, 0);
+        
+        const expenses = monthlyTransactions
+            .filter(t => t.type === 'expense')
+            .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+        
+        const transfers = monthlyTransactions
+            .filter(t => t.type === 'transfer')
+            .reduce((sum, t) => sum + t.amount, 0);
+        
+        const openingBalance = this.openingBalances.get(`${this.currentYear}-${month}`) || 0;
+        const netChange = income - expenses + transfers;
+        const closingBalance = openingBalance + netChange;
+        const monthlyNotes = this.getMonthlyNotes(month) || '';
+        
+        // Group by category
+        const categoryTotals = {};
+        monthlyTransactions.forEach(transaction => {
+            const category = transaction.category || 'לא מקוטלג';
+            categoryTotals[category] = (categoryTotals[category] || 0) + transaction.amount;
+        });
+        
+        // Generate HTML report
+        const reportHTML = `
+<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>דוח חודשי - ${monthName}</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', 'Arial', sans-serif;
+            direction: rtl;
+            text-align: right;
+            margin: 15px;
+            background: #f8f9fa;
+            color: #333;
+        }
+        .report-header {
+            background: linear-gradient(135deg, #1f4e79 0%, #2e86ab 100%);
+            color: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            text-align: center;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .report-header h1 {
+            margin: 5px 0;
+            font-size: 1.5rem;
+        }
+        .report-header h2 {
+            margin: 5px 0;
+            font-size: 1.2rem;
+            font-weight: 500;
+        }
+        .report-header p {
+            margin: 5px 0;
+            font-size: 0.9rem;
+            opacity: 0.9;
+        }
+        .summary-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+        .summary-card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            border: 2px solid #e0e6ed;
+        }
+        .summary-card h3 {
+            margin-top: 0;
+            margin-bottom: 10px;
+            font-size: 1.1rem;
+        }
+        .balance-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 10px;
+        }
+        .balance-table th, .balance-table td {
+            padding: 8px 10px;
+            text-align: right;
+            border-bottom: 1px solid #ddd;
+            font-size: 0.9rem;
+        }
+        .balance-table th {
+            background: #f8f9fa;
+            font-weight: 600;
+        }
+        .positive { color: #28a745; }
+        .negative { color: #dc3545; }
+        .opening { color: #1976d2; }
+        .closing { color: #2e7d32; font-weight: 600; }
+        .transactions-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        .transactions-table th, .transactions-table td {
+            padding: 6px 8px;
+            text-align: right;
+            border: 1px solid #ddd;
+            font-size: 0.85rem;
+        }
+        .transactions-table th {
+            background: #1f4e79;
+            color: white;
+        }
+        .transactions-table tr:nth-child(even) {
+            background: #f8f9fa;
+        }
+        .notes-section {
+            background: #fff3e0;
+            padding: 12px 15px;
+            border-radius: 6px;
+            border: 2px solid #ff9800;
+            margin: 15px 0;
+        }
+        .notes-section h3 {
+            margin-top: 0;
+            margin-bottom: 8px;
+            font-size: 1rem;
+        }
+        @media print {
+            body { 
+                background: white;
+                margin: 10px;
+            }
+            .report-header { 
+                background: #1f4e79 !important;
+                padding: 10px 15px !important;
+                margin-bottom: 10px !important;
+            }
+            .report-header h1 {
+                font-size: 1.3rem !important;
+            }
+            .report-header h2 {
+                font-size: 1rem !important;
+            }
+            .summary-grid {
+                gap: 10px !important;
+                margin-bottom: 10px !important;
+            }
+            .summary-card {
+                padding: 10px !important;
+            }
+            .print-buttons { display: none !important; }
+            .page-break { page-break-before: always; }
+        }
+        .print-buttons {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            display: flex;
+            gap: 10px;
+            z-index: 1000;
+        }
+        .print-btn {
+            background: #1f4e79;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            transition: all 0.3s ease;
+        }
+        .print-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+        }
+        .close-btn {
+            background: #f44336;
+        }
+        .save-btn {
+            background: #4caf50;
+        }
+    </style>
+</head>
+<body>
+    <div class="print-buttons">
+        <button class="print-btn" onclick="window.print()">🖨️ הדפס דוח</button>
+        <button class="print-btn save-btn" onclick="saveAsHTML()">💾 שמור כ-HTML</button>
+        <button class="print-btn close-btn" onclick="window.close()">❌ סגור</button>
+    </div>
+    
+    <script>
+        function saveAsHTML() {
+            // Clone the document and remove the buttons
+            const htmlContent = document.documentElement.outerHTML;
+            const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = 'דוח-חודשי-' + document.querySelector('.report-header h2').textContent.replace(/ /g, '-') + '.html';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(link.href);
+        }
+    </script>
+    
+    <div class="report-header">
+        <h1>דוח חודשי מפורט</h1>
+        <h2>${monthName} ${this.currentYear}</h2>
+        <p>נוצר בתאריך: ${new Date(this.currentYear, new Date().getMonth(), new Date().getDate()).toLocaleDateString('he-IL')}</p>
+        <p style="font-size: 0.9rem; opacity: 0.9;">מפיק הדוח: ${reportProducer}</p>
+    </div>
+
+    <div class="summary-grid">
+        <div class="summary-card">
+            <h3>💳 סיכום יתרות ותזרים</h3>
+            <table class="balance-table">
+                <tr>
+                    <th>פריט</th>
+                    <th>סכום</th>
+                </tr>
+                <tr>
+                    <td>יתרת עו"ש תחילת חודש</td>
+                    <td class="opening">${this.formatCurrency(openingBalance)}</td>
+                </tr>
+                <tr>
+                    <td>סיכום הכנסות</td>
+                    <td class="positive">${this.formatCurrency(income)}</td>
+                </tr>
+                <tr>
+                    <td>סיכום הוצאות</td>
+                    <td class="negative">${this.formatCurrency(expenses)}</td>
+                </tr>
+                ${transfers !== 0 ? `
+                <tr>
+                    <td>העברות</td>
+                    <td class="${transfers >= 0 ? 'positive' : 'negative'}">${this.formatCurrency(transfers)}</td>
+                </tr>` : ''}
+                <tr>
+                    <td>שינוי נטו בחודש</td>
+                    <td class="${netChange >= 0 ? 'positive' : 'negative'}">${this.formatCurrency(netChange)}</td>
+                </tr>
+                <tr>
+                    <td><strong>יתרת עו"ש סוף חודש</strong></td>
+                    <td class="closing">${this.formatCurrency(closingBalance)}</td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="summary-card">
+            <h3>📊 פילוח לפי קטגוריות</h3>
+            <table class="balance-table">
+                <tr>
+                    <th>קטגוריה</th>
+                    <th>סכום</th>
+                </tr>
+                ${Object.entries(categoryTotals)
+                    .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
+                    .map(([category, amount]) => `
+                <tr>
+                    <td>${category}</td>
+                    <td class="${amount >= 0 ? 'positive' : 'negative'}">${this.formatCurrency(amount)}</td>
+                </tr>`).join('')}
+            </table>
+        </div>
+    </div>
+
+    ${monthlyNotes ? `
+    <div class="notes-section">
+        <h3>📝 הערות לחודש</h3>
+        <p>${monthlyNotes.replace(/\n/g, '<br>')}</p>
+    </div>` : ''}
+
+    <div class="summary-card">
+        <h3>📋 פירוט תנועות החודש</h3>
+        <table class="transactions-table">
+            <thead>
+                <tr>
+                    <th>פריט</th>
+                    <th>סכום</th>
+                    <th>סוג</th>
+                    <th>קטגוריה</th>
+                    <th>הערה</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${monthlyTransactions
+                    .sort((a, b) => b.id - a.id)
+                    .map(t => `
+                <tr>
+                    <td>${t.item}</td>
+                    <td class="${t.type}">${this.formatCurrency(t.amount)}</td>
+                    <td>${this.getTypeLabel(t.type)}</td>
+                    <td>${t.category}</td>
+                    <td>${t.note || ''}</td>
+                </tr>`).join('')}
+            </tbody>
+        </table>
+    </div>
+
+    ${(() => {
+        // Get check payments from regular transactions
+        const checkPayments = monthlyTransactions.filter(t => t.paymentMethod === 'check');
+        if (checkPayments.length === 0) return '';
+        
+        const totalCheckAmount = checkPayments.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+        
+        return `
+    <div class="summary-card">
+        <h3>🏦 תשלומי צ'יקים בחודש</h3>
+        <table class="balance-table">
+            <thead>
+                <tr>
+                    <th>פריט</th>
+                    <th>צ'יק מספר</th>
+                    <th>מוטב</th>
+                    <th>סכום</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${checkPayments.map(t => `
+                <tr>
+                    <td>${t.item}</td>
+                    <td>${t.checkDetails?.checkNumber || '(לא צוין)'}</td>
+                    <td>${t.checkDetails?.payeeName || '(לא צוין)'}</td>
+                    <td class="negative">${this.formatCurrency(t.amount)}</td>
+                </tr>`).join('')}
+                ${checkPayments.length > 1 ? `
+                <tr style="background: #f5f5f5; font-weight: 600;">
+                    <td colspan="3">סה"כ תשלומי צ'יקים (${checkPayments.length} צ'יקים)</td>
+                    <td class="negative">${this.formatCurrency(totalCheckAmount)}</td>
+                </tr>` : ''}
+            </tbody>
+        </table>
+    </div>`;
+    })()}
+
+    ${(() => {
+        // Get imported check items for this month
+        const importedChecks = this.importedCheckItems.filter(item => {
+            const itemYear = item.year || this.currentYear;
+            return item.month === month && itemYear === this.currentYear;
+        });
+        
+        if (importedChecks.length === 0) return '';
+        
+        const totalImportedAmount = importedChecks.reduce((sum, item) => sum + Math.abs(item.amount), 0);
+        
+        return `
+    <div class="summary-card" style="background: #f3e5f5; border-color: #9c27b0;">
+        <h3 style="color: #6a1b9a;">🏦 פרטי צ'יק הוצאות חודש ${monthName}</h3>
+        <table class="balance-table">
+            <thead>
+                <tr>
+                    <th>צ'יק מספר</th>
+                    <th>מוטב</th>
+                    <th>עבור</th>
+                    <th>הערה</th>
+                    <th>סכום</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${importedChecks.map(item => `
+                <tr>
+                    <td>${item.checkNumber || '(לא הוזן)'}</td>
+                    <td>${item.payeeName || '(לא הוזן)'}</td>
+                    <td>${item.item}</td>
+                    <td>${item.note || ''}</td>
+                    <td style="color: #6a1b9a; font-weight: 600;">${this.formatCurrency(item.amount)}</td>
+                </tr>`).join('')}
+                ${importedChecks.length > 1 ? `
+                <tr style="background: #e1bee7; font-weight: 600;">
+                    <td colspan="4">סה"כ פריטי שיק (${importedChecks.length} פריטים)</td>
+                    <td style="color: #6a1b9a;">${this.formatCurrency(totalImportedAmount)}</td>
+                </tr>` : ''}
+            </tbody>
+        </table>
+    </div>`;
+    })()}
+</body>
+</html>`;
+
+        // Create and display the report in a new window
+        const newWindow = window.open('', '_blank', 'width=1024,height=768,scrollbars=yes,resizable=yes');
+        if (newWindow) {
+            newWindow.document.write(reportHTML);
+            newWindow.document.close();
+            
+            // Focus the new window
+            newWindow.focus();
+            
+            // Add keyboard shortcuts for convenience
+            newWindow.addEventListener('keydown', function(e) {
+                if (e.ctrlKey && e.key === 'p') {
+                    e.preventDefault();
+                    newWindow.print();
+                }
+                if (e.key === 'Escape') {
+                    newWindow.close();
+                }
+            });
+            
+            this.showNotification(`דוח ${monthName} נפתח בחלון חדש - Ctrl+P להדפסה, לחץ על 💾 לשמירה כ-HTML, או Esc לסגירה`, 'success');
+        } else {
+            // Fallback if popup is blocked - create downloadable file
+            const reportBlob = new Blob([reportHTML], { type: 'text/html;charset=utf-8' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(reportBlob);
+            link.download = `דוח-חודשי-${monthName}-${new Date().getFullYear()}.html`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            this.showNotification(`החלון נחסם - הדוח נשמר כקובץ`, 'info');
+        }
+    }
+
+    exportDashboardReport(selectedMonth) {
+        const monthName = this.getMonthName(selectedMonth);
+        
+        // Get user data for report
+        const userData = this.getUserData();
+        const reportProducer = userData ? `${userData.name}${userData.phone ? ` | 📞 ${userData.phone}` : ''}${userData.id ? ` | ת"ז ${userData.id}` : ''}` : 'לא צוין';
+        
+        // Monthly data (for selected month)
+        const monthlyTransactions = this.transactions.filter(t => {
+            const transactionYear = t.year || this.currentYear;
+            return t.month === selectedMonth && transactionYear === this.currentYear;
+        });
+        
+        const monthlyExpenses = monthlyTransactions
+            .filter(t => t.type === 'expense')
+            .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+        
+        const monthlyIncome = monthlyTransactions
+            .filter(t => t.type === 'income')
+            .reduce((sum, t) => sum + t.amount, 0);
+        
+        const monthlyNet = monthlyIncome - monthlyExpenses;
+        
+        // Annual data (for entire year)
+        const yearTransactions = this.transactions.filter(t => {
+            const transactionYear = t.year || this.currentYear;
+            return transactionYear === this.currentYear;
+        });
+        
+        const annualExpenses = yearTransactions
+            .filter(t => t.type === 'expense')
+            .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+        
+        const annualIncome = yearTransactions
+            .filter(t => t.type === 'income')
+            .reduce((sum, t) => sum + t.amount, 0);
+        
+        const annualNet = annualIncome - annualExpenses;
+        
+        // Category breakdown for selected month
+        const categoryTotals = {};
+        monthlyTransactions.filter(t => t.type === 'expense').forEach(transaction => {
+            const category = transaction.category || 'לא מקוטלג';
+            categoryTotals[category] = (categoryTotals[category] || 0) + Math.abs(transaction.amount);
+        });
+        
+        const sortedCategories = Object.entries(categoryTotals)
+            .sort((a, b) => b[1] - a[1]);
+        
+        // Monthly summary table for entire year
+        const months = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+        const monthlySummaryRows = months.map(month => {
+            const trans = this.transactions.filter(t => {
+                const transactionYear = t.year || this.currentYear;
+                return t.month === month && transactionYear === this.currentYear;
+            });
+            
+            const expenses = trans
+                .filter(t => t.type === 'expense')
+                .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+            
+            const income = trans
+                .filter(t => t.type === 'income')
+                .reduce((sum, t) => sum + t.amount, 0);
+            
+            const net = income - expenses;
+            
+            return {
+                month: this.getMonthName(month),
+                income,
+                expenses,
+                net,
+                isSelected: month === selectedMonth
+            };
+        });
+        
+        // Generate HTML report
+        const reportHTML = `
+<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>דוח סיכום כללי - ${this.currentYear}</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', 'Arial', sans-serif;
+            direction: rtl;
+            text-align: right;
+            margin: 15px;
+            background: #f8f9fa;
+            color: #333;
+        }
+        .report-header {
+            background: linear-gradient(135deg, #1f4e79 0%, #2e86ab 100%);
+            color: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            text-align: center;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .report-header h1 {
+            margin: 5px 0;
+            font-size: 1.5rem;
+        }
+        .report-header h2 {
+            margin: 5px 0;
+            font-size: 1.2rem;
+            font-weight: 500;
+        }
+        .report-header p {
+            margin: 5px 0;
+            font-size: 0.9rem;
+            opacity: 0.9;
+        }
+        .summary-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+        .summary-card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            border: 2px solid #e0e6ed;
+        }
+        .summary-card h3 {
+            margin-top: 0;
+            margin-bottom: 10px;
+            font-size: 1.1rem;
+            color: #1f4e79;
+        }
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        .kpi-item {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 6px;
+            border: 2px solid;
+        }
+        .kpi-item.expenses { border-color: #dc3545; }
+        .kpi-item.income { border-color: #28a745; }
+        .kpi-item.net { border-color: #17a2b8; }
+        .kpi-label {
+            display: block;
+            font-size: 0.85rem;
+            color: #666;
+            margin-bottom: 5px;
+        }
+        .kpi-value {
+            display: block;
+            font-size: 1.3rem;
+            font-weight: 600;
+        }
+        .kpi-value.positive { color: #28a745; }
+        .kpi-value.negative { color: #dc3545; }
+        .table-container {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin-bottom: 15px;
+        }
+        .summary-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+        .summary-table th, .summary-table td {
+            padding: 8px 10px;
+            text-align: right;
+            border: 1px solid #ddd;
+        }
+        .summary-table th {
+            background: #1f4e79;
+            color: white;
+            font-weight: 600;
+        }
+        .summary-table tr:nth-child(even) {
+            background: #f8f9fa;
+        }
+        .summary-table tr.selected {
+            background: #fff3cd !important;
+            font-weight: 600;
+        }
+        .positive { color: #28a745; }
+        .negative { color: #dc3545; }
+        @media print {
+            body { 
+                background: white;
+                margin: 10px;
+            }
+            .report-header { 
+                background: #1f4e79 !important;
+                padding: 10px 15px !important;
+                margin-bottom: 10px !important;
+            }
+            .print-buttons { display: none !important; }
+            .page-break { page-break-before: always; }
+        }
+        .print-buttons {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            display: flex;
+            gap: 10px;
+            z-index: 1000;
+        }
+        .print-btn {
+            background: #1f4e79;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            transition: all 0.3s ease;
+        }
+        .print-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+        }
+        .close-btn {
+            background: #f44336;
+        }
+        .save-btn {
+            background: #4caf50;
+        }
+    </style>
+</head>
+<body>
+    <div class="print-buttons">
+        <button class="print-btn" onclick="window.print()">🖨️ הדפס דוח</button>
+        <button class="print-btn save-btn" onclick="saveAsHTML()">💾 שמור כ-HTML</button>
+        <button class="print-btn close-btn" onclick="window.close()">❌ סגור</button>
+    </div>
+    
+    <script>
+        function saveAsHTML() {
+            const htmlContent = document.documentElement.outerHTML;
+            const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = 'דוח-סיכום-${this.currentYear}.html';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(link.href);
+        }
+    </script>
+    
+    <div class="report-header">
+        <h1>📈 דוח סיכום כללי</h1>
+        <h2>שנת ${this.currentYear}</h2>
+        <p>נוצר בתאריך: ${new Date(this.currentYear, new Date().getMonth(), new Date().getDate()).toLocaleDateString('he-IL')}</p>
+        <p style="font-size: 0.9rem; opacity: 0.9;">מפיק הדוח: ${reportProducer}</p>
+    </div>
+
+    <div class="summary-grid">
+        <div class="summary-card">
+            <h3>� סיכום שנתי - ${this.currentYear}</h3>
+            <div class="kpi-grid">
+                <div class="kpi-item expenses">
+                    <span class="kpi-label">הוצאות:</span>
+                    <span class="kpi-value">${this.formatCurrency(annualExpenses)}</span>
+                </div>
+                <div class="kpi-item income">
+                    <span class="kpi-label">הכנסות:</span>
+                    <span class="kpi-value">${this.formatCurrency(annualIncome)}</span>
+                </div>
+                <div class="kpi-item net" style="grid-column: 1 / -1;">
+                    <span class="kpi-label">מאזן שנתי:</span>
+                    <span class="kpi-value ${annualNet >= 0 ? 'positive' : 'negative'}">${this.formatCurrency(annualNet)}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="table-container">
+        <h3>📅 סיכום חודשי - שנת ${this.currentYear}</h3>
+        <table class="summary-table">
+            <thead>
+                <tr>
+                    <th>חודש</th>
+                    <th>הכנסות</th>
+                    <th>הוצאות</th>
+                    <th>מאזן</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${monthlySummaryRows.map(row => `
+                <tr${row.isSelected ? ' class="selected"' : ''}>
+                    <td>${row.month}</td>
+                    <td class="positive">${this.formatCurrency(row.income)}</td>
+                    <td class="negative">${this.formatCurrency(row.expenses)}</td>
+                    <td class="${row.net >= 0 ? 'positive' : 'negative'}">${this.formatCurrency(row.net)}</td>
+                </tr>`).join('')}
+                <tr style="font-weight: 600; background: #e3f2fd;">
+                    <td>סה"כ שנתי</td>
+                    <td class="positive">${this.formatCurrency(annualIncome)}</td>
+                    <td class="negative">${this.formatCurrency(annualExpenses)}</td>
+                    <td class="${annualNet >= 0 ? 'positive' : 'negative'}">${this.formatCurrency(annualNet)}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    ${this.generateCategoryBreakdownTable()}
+</body>
+</html>`;
+
+        // Open report in new window
+        const newWindow = window.open('', '_blank', 'width=1000,height=800,menubar=yes,toolbar=yes,location=no,status=yes,scrollbars=yes,resizable=yes');
+        
+        if (newWindow) {
+            newWindow.document.write(reportHTML);
+            newWindow.document.close();
+            
+            // Add keyboard shortcuts
+            newWindow.addEventListener('keydown', function(e) {
+                if (e.ctrlKey && e.key === 'p') {
+                    e.preventDefault();
+                    newWindow.print();
+                }
+                if (e.key === 'Escape') {
+                    newWindow.close();
+                }
+            });
+            
+            this.showNotification(`דוח סיכום נפתח בחלון חדש - Ctrl+P להדפסה, לחץ על 💾 לשמירה כ-HTML, או Esc לסגירה`, 'success');
+        } else {
+            // Fallback if popup is blocked
+            const reportBlob = new Blob([reportHTML], { type: 'text/html;charset=utf-8' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(reportBlob);
+            link.download = `דוח-סיכום-${this.currentYear}.html`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            this.showNotification(`החלון נחסם - הדוח נשמר כקובץ`, 'info');
+        }
+    }
+
+    generateCategoryBreakdownTable() {
+        // Filter by current year
+        const currentYearTransactions = this.transactions.filter(t => {
+            const transactionYear = t.year || this.currentYear;
+            return transactionYear === this.currentYear;
+        });
+        
+        if (currentYearTransactions.length === 0) {
+            return `
+                <div class="table-container">
+                    <h3>📋 טבלת סיכום שנתי - פילוח קטגוריות חודשי</h3>
+                    <p style="text-align: center; color: #666; padding: 20px;">אין עסקאות לשנה ${this.currentYear}</p>
+                </div>
+            `;
+        }
+        
+        // Collect all categories from actual data
+        const allCategories = new Set();
+        currentYearTransactions.forEach(transaction => {
+            let category = transaction.category || 'שונות';
+            // Handle special income category mapping
+            if (category === 'משכורת' || category === 'ביטוח לאומי' || category === 'מענק עבודה') {
+                category = 'משכורת + ביטוח לאומי';
+            }
+            allCategories.add(category);
+        });
+        
+        // Convert to sorted array - income category first, then alphabetically
+        const categories = Array.from(allCategories).sort((a, b) => {
+            if (a === 'משכורת + ביטוח לאומי') return -1;
+            if (b === 'משכורת + ביטוח לאומי') return 1;
+            return a.localeCompare(b, 'he');
+        });
+        
+        // Process data for all 12 months
+        const monthlyData = {};
+        const categoryTotals = {};
+        
+        // Initialize data structures
+        for (let month = 1; month <= 12; month++) {
+            monthlyData[month] = {};
+            categories.forEach(cat => {
+                monthlyData[month][cat] = 0;
+            });
+        }
+        
+        // Initialize ALL category totals to 0
+        categories.forEach(cat => {
+            categoryTotals[cat] = 0;
+        });
+        
+        currentYearTransactions.forEach(transaction => {
+            const month = parseInt(transaction.month);
+            let category = transaction.category || 'שונות';
+            
+            // Skip if month is invalid
+            if (!month || isNaN(month) || month < 1 || month > 12) {
+                return;
+            }
+            
+            // Handle special income category mapping
+            if (category === 'משכורת' || category === 'ביטוח לאומי' || category === 'מענק עבודה') {
+                category = 'משכורת + ביטוח לאומי';
+            }
+            
+            // For income transactions, use positive amount; for expenses, use absolute value
+            const amount = transaction.type === 'income' ? transaction.amount : Math.abs(transaction.amount);
+            
+            monthlyData[month][category] += amount;
+            categoryTotals[category] += amount;
+        });
+        
+        // Calculate monthly totals (Income - Expenses)
+        const monthlyTotals = {};
+        for (let month = 1; month <= 12; month++) {
+            const income = monthlyData[month]['משכורת + ביטוח לאומי'] || 0;
+            const expenses = categories
+                .filter(cat => cat !== 'משכורת + ביטוח לאומי')
+                .reduce((sum, cat) => sum + (monthlyData[month][cat] || 0), 0);
+            monthlyTotals[month] = income - expenses;
+        }
+        
+        // Calculate totals
+        const incomeTotal = categoryTotals['משכורת + ביטוח לאומי'] || 0;
+        const expenseCategories = categories.filter(cat => cat !== 'משכורת + ביטוח לאומי');
+        const expenseTotal = expenseCategories.reduce((sum, cat) => sum + categoryTotals[cat], 0);
+        const annualNetTotal = incomeTotal - expenseTotal;
+        
+        // Build HTML table with inline styles matching the dashboard
+        let tableHTML = `
+            <div class="table-container" style="page-break-before: always;">
+                <h3>📋 טבלת סיכום שנתי - פילוח קטגוריות חודשי</h3>
+                <div style="overflow-x: auto;">
+                    <table class="summary-table" style="width: 100%; border-collapse: collapse; font-size: 0.75rem;">
+                        <thead>
+                            <tr>
+                                <th style="width: 80px; padding: 6px 8px; text-align: right; border: 1px solid #ddd; background: #1f4e79; color: white; font-weight: 600; white-space: nowrap;">חודש</th>
+                                ${categories.map(cat => {
+                                    const isIncome = cat === 'משכורת + ביטוח לאומי';
+                                    return `<th style="min-width: 70px; padding: 6px 8px; text-align: right; border: 1px solid #ddd; background: ${isIncome ? '#4caf50' : '#1f4e79'}; color: white; font-weight: 600; font-size: 0.7rem; white-space: nowrap;">${cat}</th>`;
+                                }).join('')}
+                                <th style="min-width: 80px; padding: 6px 8px; text-align: right; border: 1px solid #ddd; background: #1976d2; color: white; font-weight: 600; white-space: nowrap;">יתרה נטו</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+        `;
+        
+        // Add rows for each month
+        for (let month = 1; month <= 12; month++) {
+            const monthName = this.getMonthName(month);
+            const rowBg = month % 2 === 0 ? '#f8f9fa' : 'white';
+            tableHTML += `
+                            <tr style="background: ${rowBg};">
+                                <td style="padding: 6px 8px; text-align: right; border: 1px solid #ddd; font-weight: 600; white-space: nowrap;">${monthName}</td>
+                                ${categories.map(cat => {
+                                    const amount = monthlyData[month][cat] || 0;
+                                    const isIncome = cat === 'משכורת + ביטוח לאומי';
+                                    const cellBg = isIncome ? '#e8f5e9' : '';
+                                    const cellColor = amount === 0 ? '#ccc' : (isIncome ? '#2e7d32' : '#333');
+                                    return `<td style="padding: 6px 8px; text-align: right; border: 1px solid #ddd; background: ${cellBg}; color: ${cellColor}; white-space: nowrap;">${
+                                        amount === 0 ? '-' : this.formatCurrency(amount)
+                                    }</td>`;
+                                }).join('')}
+                                <td style="padding: 6px 8px; text-align: right; border: 1px solid #ddd; font-weight: 600; color: ${monthlyTotals[month] >= 0 ? '#2e7d32' : '#c62828'}; white-space: nowrap;">${
+                                    monthlyTotals[month] === 0 ? '-' : this.formatCurrency(monthlyTotals[month])
+                                }</td>
+                            </tr>
+            `;
+        }
+        
+        // Add totals row
+        tableHTML += `
+                            <tr style="background: #e3f2fd; font-weight: 600;">
+                                <td style="padding: 8px; text-align: right; border: 1px solid #ddd; white-space: nowrap;">סה״כ שנתי</td>
+                                ${categories.map(cat => {
+                                    const amount = categoryTotals[cat] || 0;
+                                    const isIncome = cat === 'משכורת + ביטוח לאומי';
+                                    const cellBg = isIncome ? '#c8e6c9' : '#e3f2fd';
+                                    return `<td style="padding: 8px; text-align: right; border: 1px solid #ddd; background: ${cellBg}; white-space: nowrap;">${
+                                        amount === 0 ? '-' : this.formatCurrency(amount)
+                                    }</td>`;
+                                }).join('')}
+                                <td style="padding: 8px; text-align: right; border: 1px solid #ddd; background: ${annualNetTotal >= 0 ? '#4caf50' : '#f44336'}; color: white; font-weight: 600; white-space: nowrap;">
+                                    ${this.formatCurrency(annualNetTotal)}
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+        
+        return tableHTML;
+    }
+
+    updateCheckPaymentsSummary(month) {
+        const container = document.getElementById('checkPaymentsList');
+        const summaryCard = document.getElementById('checkPaymentsSummary');
+        
+        // Filter check payments - handle both old data (without year) and new data (with year)
+        const checkPayments = this.transactions.filter(t => {
+            const transactionYear = t.year || this.currentYear; // Use current year if no year specified
+            return t.month === month && 
+                   transactionYear === this.currentYear &&
+                   t.paymentMethod === 'check' && 
+                   t.checkDetails;
+        });
+
+        if (checkPayments.length === 0) {
+            summaryCard.style.display = 'none';
+            return;
+        }
+
+        summaryCard.style.display = 'block';
+        container.innerHTML = '';
+        
+        checkPayments.forEach(transaction => {
+            const checkNum = transaction.checkDetails.checkNumber && transaction.checkDetails.checkNumber !== 'N/A'
+                ? transaction.checkDetails.checkNumber
+                : '(לא הוזן)';
+            const payee = transaction.checkDetails.payeeName && transaction.checkDetails.payeeName !== 'לא צוין'
+                ? transaction.checkDetails.payeeName
+                : '(לא הוזן)';
+            
+            const item = document.createElement('div');
+            item.className = 'check-payment-item';
+            item.innerHTML = `
+                <div class="check-payment-details">
+                    <div class="check-payment-number">צ'יק מספר: ${checkNum}</div>
+                    <div class="check-payment-payee">מוטב: ${payee}</div>
+                    <div style="margin-top: 5px;">
+                        <strong>עבור:</strong> ${transaction.item}
+                        ${transaction.note ? `<div class="check-payment-note">הערה: ${transaction.note}</div>` : ''}
+                    </div>
+                </div>
+                <div class="check-payment-amount">${this.formatCurrency(transaction.amount)}</div>
+            `;
+            container.appendChild(item);
+        });
+
+        // Add total if more than one check
+        if (checkPayments.length > 1) {
+            const totalAmount = checkPayments.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+            const totalItem = document.createElement('div');
+            totalItem.style.cssText = `
+                background: #f5f5f5;
+                border: 2px solid #666;
+                border-radius: 8px;
+                padding: 10px 15px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                font-weight: 600;
+                margin-top: 10px;
+            `;
+            totalItem.innerHTML = `
+                <span>סה"כ תשלומי צ'יקים (${checkPayments.length} צ'יקים):</span>
+                <span style="color: #d32f2f; font-size: 1.1rem;">${this.formatCurrency(totalAmount)}</span>
+            `;
+            container.appendChild(totalItem);
+        }
+    }
+
+    // Update imported check items for monthly view
+    updateImportedCheckItemsMonthly(month) {
+        const container = document.getElementById('importedCheckItemsMonthlyList');
+        const summaryCard = document.getElementById('importedCheckItemsMonthly');
+
+        if (!container || !summaryCard) return;
+
+        // Filter check items by current year and selected month
+        const filteredCheckItems = this.importedCheckItems.filter(item => {
+            const itemYear = item.year || this.currentYear;
+            return item.month === month && itemYear === this.currentYear;
+        });
+
+        if (filteredCheckItems.length === 0) {
+            summaryCard.style.display = 'none';
+            return;
+        }
+
+        summaryCard.style.display = 'block';
+
+        // Update the title with month name
+        const titleElement = summaryCard.querySelector('h3');
+        if (titleElement) {
+            const monthName = this.getMonthName(month);
+            titleElement.textContent = `🏦 פרטי צ׳יק הוצאות חודש ${monthName}`;
+        }
+
+        container.innerHTML = '';
+
+        filteredCheckItems.forEach(checkItem => {
+            const checkNum = checkItem.checkNumber || '(לא הוזן)';
+            const payee = checkItem.payeeName || '(לא הוזן)';
+
+            const item = document.createElement('div');
+            item.className = 'imported-check-item';
+            item.innerHTML = `
+                <div class="check-payment-details">
+                    <div class="check-payment-number">צ'יק מספר: ${checkNum}</div>
+                    <div class="check-payment-payee">מוטב: ${payee}</div>
+                    <div style="margin-top: 5px;">
+                        <strong>עבור:</strong> ${checkItem.item}
+                        ${checkItem.note ? `<div class="check-payment-note">הערה: ${checkItem.note}</div>` : ''}
+                    </div>
+                </div>
+                <div class="check-payment-amount">${this.formatCurrency(checkItem.amount)}</div>
+            `;
+            container.appendChild(item);
+        });
+
+        // Add total if more than one check item
+        if (filteredCheckItems.length > 1) {
+            const totalAmount = filteredCheckItems.reduce((sum, item) => sum + Math.abs(item.amount), 0);
+            const totalItem = document.createElement('div');
+            totalItem.style.cssText = `
+                background: #f5f5f5;
+                border: 2px solid #666;
+                border-radius: 8px;
+                padding: 10px 15px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                font-weight: 600;
+                margin-top: 10px;
+            `;
+            totalItem.innerHTML = `
+                <span>סה"כ פריטי שיק (${filteredCheckItems.length} פריטים):</span>
+                <span style="color: #d32f2f; font-size: 1.1rem;">${this.formatCurrency(totalAmount)}</span>
+            `;
+            container.appendChild(totalItem);
+        }
+    }
+
+
+    // Update all displays
+    updateDisplay() {
+        this.updateTransactionsTable();
+        this.updateMappingTable();
+        
+        if (this.currentTab === 'monthly') {
+            this.updateMonthlyView();
+        } else if (this.currentTab === 'dashboard') {
+            this.updateDashboard();
+        }
+    }
+
+    // Show notification
+    showNotification(message, type = 'info') {
+        // Create notification element
+        const notification = document.createElement('div');
+        notification.className = `notification ${type}`;
+        notification.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: ${type === 'success' ? '#4caf50' : type === 'error' ? '#f44336' : '#2196f3'};
+            color: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            z-index: 10000;
+            animation: slideInRight 0.3s ease;
+            font-weight: 500;
+            white-space: pre-wrap;
+            max-width: 400px;
+            line-height: 1.5;
+        `;
+        notification.textContent = message;
+        
+        document.body.appendChild(notification);
+        
+        // Calculate display time based on message length (longer messages need more time)
+        const displayTime = message.includes('\n') ? 5000 : 3000; // 5 seconds for multi-line, 3 for single
+        
+        // Remove notification after display time
+        setTimeout(() => {
+            notification.style.animation = 'slideOutRight 0.3s ease';
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.parentNode.removeChild(notification);
+                }
+            }, 300);
+        }, displayTime);
+    }
+
+    updateAnnualSummaryTable() {
+        const container = document.getElementById('annualSummaryTable');
+        if (!container) {
+            console.error('Annual summary table container not found');
+            return;
+        }
+        
+        try {
+            // Add temporary message to show function is being called
+            container.innerHTML = '<p style="color: blue; padding: 20px; text-align: center;">טוען נתונים...</p>';
+            
+            // Filter by current year first
+            const currentYearTransactions = this.transactions.filter(t => {
+                const transactionYear = t.year || this.currentYear;
+                return transactionYear === this.currentYear;
+            });
+            
+            console.log(`Annual table: Processing ${currentYearTransactions.length} transactions for year ${this.currentYear}`);
+            
+// If no transactions, show message and stop
+        if (currentYearTransactions.length === 0) {
+            container.innerHTML = `
+                <div style="text-align: center; padding: 40px; background: #f5f5f5; border-radius: 8px; border: 2px dashed #ccc;">
+                    <h3 style="color: #666; margin: 0 0 10px 0;">📊 אין עסקאות לשנה ${this.currentYear}</h3>
+                    <p style="color: #999; margin: 0;">טען עסקאות או בחר שנה אחרת</p>
+                </div>
+            `;
+            console.log('No transactions for year', this.currentYear, '- stopping table generation');
+            return;
+        }
+        
+        // Collect all categories from actual data
+        const allCategories = new Set();
+        currentYearTransactions.forEach(transaction => {
+            let category = transaction.category || 'שונות';
+            // Handle special income category mapping
+            if (category === 'משכורת' || category === 'ביטוח לאומי' || category === 'מענק עבודה') {
+                category = 'משכורת + ביטוח לאומי';
+            }
+            allCategories.add(category);
+        });
+        
+        // Convert to sorted array - income category first, then alphabetically
+        const categories = Array.from(allCategories).sort((a, b) => {
+            if (a === 'משכורת + ביטוח לאומי') return -1;
+            if (b === 'משכורת + ביטוח לאומי') return 1;
+            return a.localeCompare(b, 'he');
+        });
+        
+        console.log('Categories found:', categories);
+        
+        // Process data for all 12 months
+        const monthlyData = {};
+        const categoryTotals = {};
+        
+        // Initialize data structures - MUST initialize totals to 0
+        for (let month = 1; month <= 12; month++) {
+            monthlyData[month] = {};
+            categories.forEach(cat => {
+                monthlyData[month][cat] = 0;
+            });
+        }
+        
+        // Initialize ALL category totals to 0
+        categories.forEach(cat => {
+            categoryTotals[cat] = 0;
+        });
+        
+        console.log('Categories after initialization:', categories);
+        console.log('Sample monthlyData for month 1:', monthlyData[1]);
+        
+        currentYearTransactions.forEach((transaction, idx) => {
+            // CRITICAL: Parse month as integer to match monthlyData initialization
+            const month = parseInt(transaction.month);
+            let category = transaction.category || 'שונות';
+            
+            // Debug first few transactions
+            if (idx < 3) {
+                console.log(`Transaction ${idx}:`, { 
+                    item: transaction.item, 
+                    month, 
+                    monthType: typeof month,
+                    originalMonth: transaction.month,
+                    type: transaction.type, 
+                    amount: transaction.amount, 
+                    category 
+                });
+            }
+            
+            // Skip if month is invalid
+            if (!month || isNaN(month) || month < 1 || month > 12) {
+                console.warn('Invalid month for transaction:', transaction);
+                return;
+            }
+            
+            // Handle special income category mapping
+            if (category === 'משכורת' || category === 'ביטוח לאומי' || category === 'מענק עבודה') {
+                category = 'משכורת + ביטוח לאומי';
+            }
+            
+            // Use transaction type to determine sign: income is positive, expense is negative
+            const amount = transaction.type === 'income' ? Math.abs(transaction.amount) : -Math.abs(transaction.amount);
+            
+            // Add amount to category (monthlyData[month] should always exist after initialization)
+            if (!monthlyData[month][category]) {
+                monthlyData[month][category] = 0;
+            }
+            monthlyData[month][category] += amount;
+            
+            if (!categoryTotals[category]) {
+                categoryTotals[category] = 0;
+            }
+            categoryTotals[category] += amount;
+        });
+        
+        console.log('Monthly data sample (month 1):', monthlyData[1]);
+        console.log('Category totals:', categoryTotals);
+        console.log('Number of categories:', categories.length);
+        console.log('Categories list:', categories);
+        console.log('✅ Transactions processing completed successfully!');
+        
+        // Separate expense and income categories
+        const expenseCategories = categories.filter(cat => (categoryTotals[cat] || 0) < 0);
+        const incomeCategories = categories.filter(cat => (categoryTotals[cat] || 0) > 0);
+        
+        // Calculate monthly totals
+        const monthlyIncome = {};
+        const monthlyExpenses = {};
+        const monthlyBalance = {};
+        
+        for (let month = 1; month <= 12; month++) {
+            // Sum all income for this month
+            monthlyIncome[month] = incomeCategories.reduce((sum, cat) => 
+                sum + ((monthlyData[month] && monthlyData[month][cat]) || 0), 0);
+            
+            // Sum all expenses for this month
+            monthlyExpenses[month] = expenseCategories.reduce((sum, cat) => 
+                sum + ((monthlyData[month] && monthlyData[month][cat]) || 0), 0);
+            
+            // Calculate balance
+            monthlyBalance[month] = monthlyIncome[month] + monthlyExpenses[month];
+        }
+        
+        // Build HTML table - EXPENSE CATEGORIES ONLY + 3 new columns
+        let tableHTML = `
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 100px;">חודש</th>
+                        ${expenseCategories.map(cat => `<th style="min-width: 80px;">${cat}</th>`).join('')}
+                        <th style="min-width: 110px; background: #4caf50; color: white;">הכנסות</th>
+                        <th style="min-width: 110px; background: #f44336; color: white;">סך הוצאות</th>
+                        <th style="min-width: 110px; background: #2196f3; color: white;">מאזן</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+        
+        // Add rows for each month - EXPENSE CATEGORIES ONLY + 3 new columns
+        for (let month = 1; month <= 12; month++) {
+            const monthName = this.getMonthName(month);
+            const balance = monthlyBalance[month];
+            tableHTML += `
+                <tr>
+                    <td class="month-name">${monthName}</td>
+                    ${expenseCategories.map(cat => {
+                        const amount = (monthlyData[month] && monthlyData[month][cat]) || 0;
+                        return `<td class="category-amount ${amount === 0 ? 'zero' : ''} expense-cell">${
+                            amount === 0 ? '-' : this.formatCurrency(amount)
+                        }</td>`;
+                    }).join('')}
+                    <td class="income-cell" style="font-weight: 600;">${
+                        monthlyIncome[month] === 0 ? '-' : this.formatCurrency(monthlyIncome[month])
+                    }</td>
+                    <td class="expense-cell" style="font-weight: 600;">${
+                        monthlyExpenses[month] === 0 ? '-' : this.formatCurrency(monthlyExpenses[month])
+                    }</td>
+                    <td class="${balance >= 0 ? 'positive' : 'negative'}" style="font-weight: 600;">${
+                        balance === 0 ? '-' : this.formatCurrency(balance)
+                    }</td>
+                </tr>
+            `;
+        }
+        
+        // Calculate totals
+        const totalExpenses = expenseCategories.reduce((sum, cat) => sum + (categoryTotals[cat] || 0), 0);
+        const totalIncome = incomeCategories.reduce((sum, cat) => sum + (categoryTotals[cat] || 0), 0);
+        const annualNet = totalIncome + totalExpenses;
+        
+        // Add totals row with percentages for expense categories
+        tableHTML += `
+                <tr class="total-row" style="background: #f5f5f5;">
+                    <td class="month-name" style="font-weight: 700;">סה״כ</td>
+                    ${expenseCategories.map(cat => {
+                        const amount = categoryTotals[cat] || 0;
+                        const percentage = totalExpenses !== 0 ? (Math.abs(amount) / Math.abs(totalExpenses) * 100).toFixed(1) : 0;
+                        return `<td class="category-total expense-cell" style="font-weight: 700;">
+                            ${this.formatCurrency(amount)}<br>
+                            <span style="font-size: 0.85em; color: #666;">(${percentage}%)</span>
+                        </td>`;
+                    }).join('')}
+                    <td class="category-total" style="background: #4caf50; color: white; font-weight: 700;">
+                        ${this.formatCurrency(totalIncome)}
+                    </td>
+                    <td class="category-total" style="background: #f44336; color: white; font-weight: 700;">
+                        ${this.formatCurrency(totalExpenses)}
+                    </td>
+                    <td class="category-total ${annualNet >= 0 ? 'positive' : 'negative'}" style="background: #2196f3; color: white; font-weight: 700;">
+                        ${this.formatCurrency(annualNet)}
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+        `;
+        
+        console.log('Table HTML length:', tableHTML.length, 'chars');
+        console.log('Table HTML preview (first 500 chars):', tableHTML.substring(0, 500));
+        console.log('Number of <tr> tags in table:', (tableHTML.match(/<tr>/g) || []).length);
+        console.log('Setting container innerHTML...');
+        container.innerHTML = tableHTML;
+        console.log('✅ Container innerHTML set successfully! Table should now be visible.');
+        
+        // Find top expense category (categories with negative totals)
+        const expenseCategoryData = expenseCategories
+            .map(cat => ({ category: cat, amount: Math.abs(categoryTotals[cat] || 0) }))
+            .sort((a, b) => b.amount - a.amount);
+        const topExpenseCategory = expenseCategoryData.length > 0 ? expenseCategoryData[0].category : 'אין נתונים';
+        
+        // Add summary statistics using already calculated values
+        const netAmount = annualNet;
+        const incomeTotal = totalIncome;
+        const expenseTotal = Math.abs(totalExpenses);
+        
+        // Add summary statistics
+        const statsHTML = `
+            <div style="margin-top: 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                <div style="background: #e8f5e8; padding: 15px; border-radius: 8px; text-align: center;">
+                    <div style="font-size: 0.9rem; color: #2e7d32; margin-bottom: 5px;">סה״כ הכנסות שנתי</div>
+                    <div style="font-size: 1.2rem; font-weight: 600; color: #1b5e20;">
+                        ${this.formatCurrency(incomeTotal)}
+                    </div>
+                </div>
+                <div style="background: #ffebee; padding: 15px; border-radius: 8px; text-align: center;">
+                    <div style="font-size: 0.9rem; color: #c62828; margin-bottom: 5px;">סה״כ הוצאות שנתי</div>
+                    <div style="font-size: 1.2rem; font-weight: 600; color: #b71c1c;">
+                        ${this.formatCurrency(expenseTotal)}
+                    </div>
+                </div>
+                <div style="background: ${netAmount >= 0 ? '#e3f2fd' : '#fce4ec'}; padding: 15px; border-radius: 8px; text-align: center;">
+                    <div style="font-size: 0.9rem; color: ${netAmount >= 0 ? '#1565c0' : '#c2185b'}; margin-bottom: 5px;">יתרה שנתית נטו</div>
+                    <div style="font-size: 1.2rem; font-weight: 600; color: ${netAmount >= 0 ? '#0d47a1' : '#880e4f'};">
+                        ${this.formatCurrency(netAmount)}
+                    </div>
+                </div>
+                <div style="background: #fff3e0; padding: 15px; border-radius: 8px; text-align: center;">
+                    <div style="font-size: 0.9rem; color: #e65100; margin-bottom: 5px;">ממוצע הוצאות חודשי</div>
+                    <div style="font-size: 1rem; font-weight: 600; color: #bf360c;">
+                        ${this.formatCurrency(expenseTotal / 12)}
+                    </div>
+                </div>
+                <div style="background: #f3e5f5; padding: 15px; border-radius: 8px; text-align: center;">
+                    <div style="font-size: 0.9rem; color: #7b1fa2; margin-bottom: 5px;">קטגוריית הוצאה מובילה</div>
+                    <div style="font-size: 0.9rem; font-weight: 600; color: #4a148c;">
+                        ${topExpenseCategory}
+                    </div>
+                </div>
+                <div style="background: #e8f5e8; padding: 15px; border-radius: 8px; text-align: center;">
+                    <div style="font-size: 0.9rem; color: #2e7d32; margin-bottom: 5px;">ממוצע הכנסות חודשי</div>
+                    <div style="font-size: 1rem; font-weight: 600; color: #1b5e20;">
+                        ${this.formatCurrency(incomeTotal / 12)}
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        console.log('Adding summary statistics...');
+        container.innerHTML += statsHTML;
+        console.log('✅ Annual summary table completed successfully! Check the dashboard.');
+        
+        } catch (error) {
+            console.error('Error in updateAnnualSummaryTable:', error);
+            container.innerHTML = `
+                <div style="background: #ffebee; padding: 20px; border-radius: 8px; border: 2px solid #f44336;">
+                    <h3 style="color: #d32f2f; margin: 0 0 10px 0;">❌ שגיאה בטעינת הטבלה</h3>
+                    <p style="color: #666; margin: 0;">${error.message}</p>
+                    <p style="color: #999; margin: 10px 0 0 0; font-size: 0.9em;">בדוק את הקונסול למידע נוסף</p>
+                </div>
+            `;
+        }
     }
 
     // Ensure XLSX library is loaded before use
